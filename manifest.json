@@ -1,7 +1,7 @@
 {
   "id": "ai-alias",
   "name": "AI Alias",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "minAppVersion": "1.4.0",
   "description": "Mask sensitive names in your notes with custom aliases before sending text to an AI, then restore them on the AI's reply. Your mapping table never leaves your machine.",
   "author": "wendao10",

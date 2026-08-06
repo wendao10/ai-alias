@@ -188,10 +188,7 @@ var ImportModal = class extends import_obsidian.Modal {
     const ta = contentEl.createEl("textarea", {
       attr: { rows: 14, style: "width:100%;font-family:monospace;" }
     });
-    try {
-      navigator.clipboard.readText().then((txt) => ta.value = txt);
-    } catch (e) {
-    }
+    void navigator.clipboard.readText().then((txt) => ta.value = txt).catch(() => void 0);
     new import_obsidian.Setting(contentEl).addButton(
       (btn) => btn.setButtonText(t("parseSave")).setCta().onClick(async () => {
         try {
@@ -200,11 +197,13 @@ var ImportModal = class extends import_obsidian.Modal {
           const mappings = [];
           const seen = /* @__PURE__ */ new Set();
           for (const m of raw) {
-            if (!m.real || !m.code) throw new Error(t("errEmptyField"));
-            if (!/^[A-Za-z0-9_]+$/.test(m.code)) throw new Error(t("errInvalid") + m.code);
-            if (seen.has(m.code)) throw new Error(t("errDuplicate") + m.code);
-            seen.add(m.code);
-            mappings.push({ real: m.real, code: m.code });
+            const real = typeof m.real === "string" ? m.real : "";
+            const code = typeof m.code === "string" ? m.code : "";
+            if (!real || !code) throw new Error(t("errEmptyField"));
+            if (!/^[A-Za-z0-9_]+$/.test(code)) throw new Error(t("errInvalid") + code);
+            if (seen.has(code)) throw new Error(t("errDuplicate") + code);
+            seen.add(code);
+            mappings.push({ real, code });
           }
           this.plugin.settings.prefix = typeof obj.prefix === "string" && obj.prefix !== "" ? obj.prefix : this.plugin.settings.prefix;
           this.plugin.settings.suffix = typeof obj.suffix === "string" && obj.suffix !== "" ? obj.suffix : this.plugin.settings.suffix;
@@ -214,7 +213,7 @@ var ImportModal = class extends import_obsidian.Modal {
           new import_obsidian.Notice(t("imported").replace("%d", String(mappings.length)));
           this.close();
         } catch (e) {
-          new import_obsidian.Notice(t("importFail") + e.message);
+          new import_obsidian.Notice(t("importFail") + (e instanceof Error ? e.message : String(e)));
         }
       })
     );
@@ -232,7 +231,7 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     const { containerEl } = this;
     const t = (k) => this.plugin.t(k);
     containerEl.empty();
-    containerEl.createEl("h2", { text: t("title") });
+    new import_obsidian.Setting(containerEl).setName(t("title")).setHeading();
     new import_obsidian.Setting(containerEl).setName(t("language")).setDesc(t("languageDesc")).addDropdown((d) => {
       d.addOption("en", "English");
       d.addOption("zh", "\u4E2D\u6587");
@@ -261,17 +260,12 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     );
     new import_obsidian.Setting(containerEl).setName(t("importExport")).setDesc(t("importExportDesc")).addButton(
       (btn) => btn.setButtonText(t("exportBtn")).onClick(() => {
-        try {
-          navigator.clipboard.writeText(JSON.stringify(this.plugin.settings, null, 2));
-          new import_obsidian.Notice(t("prefixCopied"));
-        } catch (e) {
-          new import_obsidian.Notice(t("copyFail") + e.message);
-        }
+        void navigator.clipboard.writeText(JSON.stringify(this.plugin.settings, null, 2)).then(() => new import_obsidian.Notice(t("prefixCopied"))).catch((e) => new import_obsidian.Notice(t("copyFail") + (e instanceof Error ? e.message : String(e))));
       })
     ).addButton(
       (btn) => btn.setButtonText(t("importBtn")).onClick(() => new ImportModal(this.app, this.plugin).open())
     );
-    containerEl.createEl("h3", { text: t("current").replace("%d", String(this.plugin.settings.mappings.length)) });
+    new import_obsidian.Setting(containerEl).setName(t("current").replace("%d", String(this.plugin.settings.mappings.length))).setHeading();
     if (this.plugin.settings.mappings.length === 0) {
       containerEl.createEl("p", { text: t("empty") });
     }
@@ -309,7 +303,10 @@ var AIAliasPlugin = class extends import_obsidian.Plugin {
   }
   registerCommands() {
     const ids = ["encrypt", "decrypt", "copy-ai-prefix"];
-    ids.forEach((id) => this.app.commands.removeCommand(this.manifest.id + ":" + id));
+    const appCommands = this.app.commands;
+    for (const id of ids) {
+      appCommands.removeCommand(this.manifest.id + ":" + id);
+    }
     this.addCommand({
       id: "encrypt",
       name: this.t("cmdEncrypt"),
@@ -327,12 +324,7 @@ var AIAliasPlugin = class extends import_obsidian.Plugin {
         const p = this.settings.prefix;
         const s = this.settings.suffix;
         const text = this.t("promptPrefix").split("%P").join(p).split("%S").join(s);
-        try {
-          navigator.clipboard.writeText(text);
-          new import_obsidian.Notice(this.t("prefixCopied"));
-        } catch (e) {
-          new import_obsidian.Notice(this.t("copyFail") + e.message);
-        }
+        void navigator.clipboard.writeText(text).then(() => new import_obsidian.Notice(this.t("prefixCopied"))).catch((e) => new import_obsidian.Notice(this.t("copyFail") + (e instanceof Error ? e.message : String(e))));
       }
     });
   }
@@ -385,7 +377,8 @@ var AIAliasPlugin = class extends import_obsidian.Plugin {
     await this.saveData(this.settings);
   }
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const data = await this.loadData();
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
     if (!Array.isArray(this.settings.mappings)) this.settings.mappings = [];
     if (this.settings.language !== "zh") this.settings.language = "en";
   }

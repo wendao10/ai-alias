@@ -186,38 +186,42 @@ class ImportModal extends Modal {
 		const ta = contentEl.createEl('textarea', {
 			attr: { rows: 14, style: 'width:100%;font-family:monospace;' }
 		});
-		try {
-			navigator.clipboard.readText().then((txt) => (ta.value = txt));
-		} catch (e) {}
+		void navigator.clipboard.readText().then((txt) => (ta.value = txt)).catch(() => undefined);
 		new Setting(contentEl).addButton((btn) =>
 			btn
 				.setButtonText(t('parseSave'))
 				.setCta()
 				.onClick(async () => {
-					try {
-						const obj = JSON.parse(ta.value);
-						const raw = Array.isArray(obj.mappings) ? obj.mappings : [];
-						const mappings: Mapping[] = [];
-						const seen = new Set<string>();
-						for (const m of raw) {
-							if (!m.real || !m.code) throw new Error(t('errEmptyField'));
-							if (!/^[A-Za-z0-9_]+$/.test(m.code)) throw new Error(t('errInvalid') + m.code);
-							if (seen.has(m.code)) throw new Error(t('errDuplicate') + m.code);
-							seen.add(m.code);
-							mappings.push({ real: m.real, code: m.code });
-						}
-						this.plugin.settings.prefix =
-							typeof obj.prefix === 'string' && obj.prefix !== '' ? obj.prefix : this.plugin.settings.prefix;
-						this.plugin.settings.suffix =
-							typeof obj.suffix === 'string' && obj.suffix !== '' ? obj.suffix : this.plugin.settings.suffix;
-						this.plugin.settings.mappings = mappings;
-						await this.plugin.save();
-						if (this.plugin.settingsTab) this.plugin.settingsTab.display();
-						new Notice(t('imported').replace('%d', String(mappings.length)));
-						this.close();
-					} catch (e) {
-						new Notice(t('importFail') + (e as Error).message);
+				try {
+					const obj = JSON.parse(ta.value) as {
+						prefix?: unknown;
+						suffix?: unknown;
+						mappings?: unknown;
+					};
+					const raw = Array.isArray(obj.mappings) ? (obj.mappings as Record<string, unknown>[]) : [];
+					const mappings: Mapping[] = [];
+					const seen = new Set<string>();
+					for (const m of raw) {
+						const real = typeof m.real === 'string' ? m.real : '';
+						const code = typeof m.code === 'string' ? m.code : '';
+						if (!real || !code) throw new Error(t('errEmptyField'));
+						if (!/^[A-Za-z0-9_]+$/.test(code)) throw new Error(t('errInvalid') + code);
+						if (seen.has(code)) throw new Error(t('errDuplicate') + code);
+						seen.add(code);
+						mappings.push({ real, code });
 					}
+					this.plugin.settings.prefix =
+						typeof obj.prefix === 'string' && obj.prefix !== '' ? obj.prefix : this.plugin.settings.prefix;
+					this.plugin.settings.suffix =
+						typeof obj.suffix === 'string' && obj.suffix !== '' ? obj.suffix : this.plugin.settings.suffix;
+					this.plugin.settings.mappings = mappings;
+					await this.plugin.save();
+					if (this.plugin.settingsTab) this.plugin.settingsTab.display();
+					new Notice(t('imported').replace('%d', String(mappings.length)));
+					this.close();
+				} catch (e) {
+					new Notice(t('importFail') + (e instanceof Error ? e.message : String(e)));
+				}
 				})
 		);
 	}
@@ -236,7 +240,7 @@ class AIAliasSettingTab extends PluginSettingTab {
 		const { containerEl } = this;
 		const t = (k: string): string => this.plugin.t(k);
 		containerEl.empty();
-		containerEl.createEl('h2', { text: t('title') });
+		new Setting(containerEl).setName(t('title')).setHeading();
 
 		new Setting(containerEl)
 			.setName(t('language'))
@@ -283,20 +287,18 @@ class AIAliasSettingTab extends PluginSettingTab {
 			.setName(t('importExport'))
 			.setDesc(t('importExportDesc'))
 			.addButton((btn) =>
-				btn.setButtonText(t('exportBtn')).onClick(() => {
-					try {
-						navigator.clipboard.writeText(JSON.stringify(this.plugin.settings, null, 2));
-						new Notice(t('prefixCopied'));
-					} catch (e) {
-						new Notice(t('copyFail') + (e as Error).message);
-					}
-				})
+			btn.setButtonText(t('exportBtn')).onClick(() => {
+				void navigator.clipboard
+					.writeText(JSON.stringify(this.plugin.settings, null, 2))
+					.then(() => new Notice(t('prefixCopied')))
+					.catch((e) => new Notice(t('copyFail') + (e instanceof Error ? e.message : String(e))));
+			})
 			)
 			.addButton((btn) =>
 				btn.setButtonText(t('importBtn')).onClick(() => new ImportModal(this.app, this.plugin).open())
 			);
 
-		containerEl.createEl('h3', { text: t('current').replace('%d', String(this.plugin.settings.mappings.length)) });
+		new Setting(containerEl).setName(t('current').replace('%d', String(this.plugin.settings.mappings.length))).setHeading();
 		if (this.plugin.settings.mappings.length === 0) {
 			containerEl.createEl('p', { text: t('empty') });
 		}
@@ -344,7 +346,10 @@ export default class AIAliasPlugin extends Plugin {
 
 	registerCommands(): void {
 		const ids = ['encrypt', 'decrypt', 'copy-ai-prefix'];
-		ids.forEach((id) => this.app.commands.removeCommand(this.manifest.id + ':' + id));
+		const appCommands = (this.app as unknown as { commands: { removeCommand: (id: string) => void } }).commands;
+		for (const id of ids) {
+			appCommands.removeCommand(this.manifest.id + ':' + id);
+		}
 
 		this.addCommand({
 			id: 'encrypt',
@@ -363,12 +368,10 @@ export default class AIAliasPlugin extends Plugin {
 				const p = this.settings.prefix;
 				const s = this.settings.suffix;
 				const text = this.t('promptPrefix').split('%P').join(p).split('%S').join(s);
-				try {
-					navigator.clipboard.writeText(text);
-					new Notice(this.t('prefixCopied'));
-				} catch (e) {
-					new Notice(this.t('copyFail') + (e as Error).message);
-				}
+				void navigator.clipboard
+					.writeText(text)
+					.then(() => new Notice(this.t('prefixCopied')))
+					.catch((e) => new Notice(this.t('copyFail') + (e instanceof Error ? e.message : String(e))));
 			}
 		});
 	}
@@ -428,7 +431,8 @@ export default class AIAliasPlugin extends Plugin {
 	}
 
 	async loadSettings(): Promise<void> {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const data = await this.loadData();
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, data) as AIAliasSettings;
 		if (!Array.isArray(this.settings.mappings)) this.settings.mappings = [];
 		if (this.settings.language !== 'zh') this.settings.language = 'en';
 	}
