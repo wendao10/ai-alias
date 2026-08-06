@@ -1,6 +1,10 @@
-# Plugin local data — contains the user's real-name → alias mapping.
-# NEVER commit this; it must stay private on the user's machine.
+# Obsidian plugin data (contains the real-name → alias mapping; must never be published)
 data.json
 
-# Build artifacts (only if a bundler is added later)
+# Build / dependency artifacts
 node_modules/
+main.js.map
+
+# Optional eslint / editor caches
+.DS_Store
+*.log
