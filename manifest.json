@@ -1,9 +1,9 @@
 {
   "id": "ai-alias",
   "name": "AI Alias",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "minAppVersion": "1.4.0",
-  "description": "A local Obsidian plugin that deterministically masks sensitive names (projects, orgs, resources, people) in your notes with custom aliases before you send the text to an AI, then restores them on the AI's reply — so the AI only ever sees placeholder aliases and your mapping table never leaves your machine.",
+  "description": "Mask sensitive names in your notes with custom aliases before sending text to an AI, then restore them on the AI's reply. Your mapping table never leaves your machine.",
   "author": "wendao10",
   "isDesktopOnly": false
 }
