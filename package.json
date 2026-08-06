@@ -1,0 +1,8 @@
+{
+  "name": "ai-alias",
+  "version": "1.3.0",
+  "description": "Local Obsidian plugin that masks sensitive names in your notes with custom aliases before sending the text to any public AI, then restores them on the AI's reply.",
+  "author": "wendao10",
+  "license": "MIT",
+  "private": true
+}
