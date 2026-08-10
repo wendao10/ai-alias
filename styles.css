@@ -44,6 +44,9 @@
 	padding: 12px;
 	margin-bottom: 12px;
 }
+.ai-addform.is-hidden {
+	display: none;
+}
 .ai-fld {
 	display: flex;
 	flex-direction: column;
