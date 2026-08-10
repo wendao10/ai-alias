@@ -28,12 +28,25 @@ __export(main_exports, {
 });
 module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
+var SCHEMA_VERSION = 2;
+var FILTER_ALL = "__all__";
+var FILTER_UNCAT = "__uncat__";
 var DEFAULT_SETTINGS = {
   prefix: "[[",
   suffix: "]]",
   language: "en",
-  mappings: []
+  mappings: [],
+  categories: []
 };
+var PRESET_DEFS = [
+  { key: "platform", en: "Platform", zh: "\u5E73\u53F0", prefix: "PLATFORM" },
+  { key: "resource", en: "Resource", zh: "\u8D44\u6E90", prefix: "RESOURCE" },
+  { key: "person", en: "Person", zh: "\u4EBA\u540D", prefix: "PERSON" },
+  { key: "place", en: "Place", zh: "\u5730\u70B9", prefix: "PLACE" },
+  { key: "dept1", en: "Department L1", zh: "\u90E8\u95E8(\u4E00\u7EA7)", prefix: "DEPT1" },
+  { key: "dept2", en: "Department L2", zh: "\u90E8\u95E8(\u4E8C\u7EA7)", prefix: "DEPT2" }
+];
+var PAGE = 10;
 var STR = {
   en: {
     title: "AI Alias",
@@ -50,7 +63,7 @@ var STR = {
     importBtn: "Import from clipboard",
     // CRUD manager
     mappingTitle: "Mapping table",
-    searchPh: "Search real name or alias\u2026",
+    searchPh: "Search real name, alias or category\u2026",
     batchAdd: "Batch add",
     delSel: "Delete selected",
     clearAll: "Clear all",
@@ -58,6 +71,7 @@ var STR = {
     cancel: "Cancel",
     thReal: "Real name",
     thCode: "Alias",
+    thCat: "Category",
     actions: "Actions",
     edit: "Edit",
     del: "Delete",
@@ -75,15 +89,15 @@ var STR = {
     confirmClear: "Clear all %d mappings? This cannot be undone.",
     cancelClear: "Cancelled",
     batchTitle: "Batch add mappings",
-    batchFmt: "One per line: real=code (supports = / \u2192 / tab / comma). Blank lines are ignored.",
+    batchFmt: 'One per line. "real" \u2192 auto alias in default category; "real|category" \u2192 that category; "real=code" \u2192 manual alias (uncategorized). Blank lines ignored.',
     batchSave: "Add",
     previewWarn: "Skipped: ",
     dupInBatch: "duplicate in batch",
     importMergeOk: "Inserted %d new entries",
-    crudNote: "Validation: real and alias cannot be empty; alias only allows A-Z a-z 0-9 _; alias must be unique. Tip: search filters live; click a column header to sort; press Enter in the add form to submit.",
+    crudNote: "Tips: search filters live (real/alias/category); use the category dropdown to filter; click a column header to sort; the add form auto-generates the alias from the chosen category; pages of 10.",
     // import
     importTitle: "Import Mappings (paste JSON)",
-    importFormat: 'Format: { "prefix":"[[", "suffix":"]]", "mappings":[{ "real":"...", "code":"PROJ_01" }] }.',
+    importFormat: 'Format: { "prefix":"[[", "suffix":"]]", "mappings":[{ "real":"...", "code":"PROJ_01", "category":"platform" }] }.',
     overwriteBtn: "Clear & insert",
     mergeBtn: "Insert",
     importHelp: "Insert: append imported mappings to your current list; existing codes are not duplicated (your current entries are kept). Clear & insert: clear all current mappings first, then replace with only the imported content (full reset).",
@@ -119,7 +133,47 @@ var STR = {
     bareTitleSkip: "Skipped %d title entr(y/ies) with invalid file-name characters",
     prefixCopied: "Copied AI prompt prefix to clipboard",
     copyFail: "Copy failed: ",
-    promptPrefix: "Note: strings in the form %PXXX%S in the following text are placeholder aliases (e.g. %PPROJ_01%S, %PORG_ABC%S), representing masked real entities. Keep these aliases exactly as-is: do not translate, explain, rewrite, or guess their meaning; if you need to refer to them, keep using the same alias."
+    promptPrefix: "Note: strings in the form %PXXX%S in the following text are placeholder aliases (e.g. %PPROJ_01%S, %PORG_ABC%S), representing masked real entities. Keep these aliases exactly as-is: do not translate, explain, rewrite, or guess their meaning; if you need to refer to them, keep using the same alias.",
+    // category auto-alias (v1.6.0)
+    catTitle: "Categories",
+    catAdd: "Add category",
+    catNamePh: "Name",
+    catPrefixPh: "Prefix",
+    catPrefixDesc: "Letters/digits only; must be globally unique. Changing a prefix keeps existing aliases unchanged; only new aliases use the new prefix.",
+    catNameErr: "Name cannot be empty",
+    catPrefixErr: "Prefix must be letters/digits only",
+    catPrefixDup: "This prefix already exists",
+    catPrefixKept: "Existing aliases keep their old prefix; only new ones use the new prefix.",
+    catDel: "Delete category",
+    catDelBlock: 'Category "%n" still has %d mapping(s). Please reassign or delete them before removing this category.',
+    catFilterAll: "All categories",
+    addCat: "Category",
+    manualCode: "Manual alias (optional)",
+    autoPreview: "Will generate: %c",
+    needCat: "Select a category or enter a manual alias",
+    noCat: "Uncategorized",
+    allCats: "All categories",
+    uncatNotice: "Found %d uncategorized mapping(s). You can auto-categorize or keep them (decryption unaffected).",
+    smartCat: "Auto-categorize",
+    smartCatDone: "Categorized %d; %d unrecognized (set manually).",
+    ok: "OK",
+    legendTitle: "Alias legend (prefix = category):",
+    realName: "Real name",
+    aliasName: "Alias",
+    realPlaceholder: "Real name",
+    codePlaceholder: "Alias (letters/digits/_)",
+    pagerPrev: "Prev",
+    pagerNext: "Next",
+    catNotFound: "Category not found",
+    batchPerLine: "Per line: real|category",
+    batchCatDefault: "Default category",
+    // preset category meanings (legend)
+    cat_platform: "Platform",
+    cat_resource: "Resource",
+    cat_person: "Person",
+    cat_place: "Place",
+    cat_dept1: "Department L1",
+    cat_dept2: "Department L2"
   },
   zh: {
     title: "AI Alias\uFF08\u4FDD\u5BC6\u4EE3\u53F7\uFF09",
@@ -136,7 +190,7 @@ var STR = {
     importBtn: "\u4ECE\u526A\u8D34\u677F\u5BFC\u5165",
     // CRUD manager
     mappingTitle: "\u6620\u5C04\u8868",
-    searchPh: "\u641C\u7D22\u539F\u6587\u6216\u4EE3\u53F7\u2026",
+    searchPh: "\u641C\u7D22\u539F\u6587 / \u4EE3\u53F7 / \u7C7B\u522B\u2026",
     batchAdd: "\u6279\u91CF\u6DFB\u52A0",
     delSel: "\u5220\u9664\u9009\u4E2D",
     clearAll: "\u6E05\u7A7A\u5168\u90E8",
@@ -144,6 +198,7 @@ var STR = {
     cancel: "\u53D6\u6D88",
     thReal: "\u539F\u6587",
     thCode: "\u4EE3\u53F7",
+    thCat: "\u7C7B\u522B",
     actions: "\u64CD\u4F5C",
     edit: "\u7F16\u8F91",
     del: "\u5220\u9664",
@@ -161,15 +216,15 @@ var STR = {
     confirmClear: "\u786E\u5B9A\u6E05\u7A7A\u5168\u90E8 %d \u6761\u6620\u5C04\uFF1F\u6B64\u64CD\u4F5C\u4E0D\u53EF\u64A4\u9500\u3002",
     cancelClear: "\u5DF2\u53D6\u6D88",
     batchTitle: "\u6279\u91CF\u6DFB\u52A0\u6620\u5C04",
-    batchFmt: "\u6BCF\u884C\u4E00\u6761\uFF0C\u683C\u5F0F\uFF1A\u539F\u6587=\u4EE3\u53F7\uFF08\u652F\u6301 = / \u2192 / \u5236\u8868\u7B26 / \u9017\u53F7\uFF09\u3002\u7A7A\u884C\u5FFD\u7565\u3002",
+    batchFmt: "\u6BCF\u884C\u4E00\u6761\u3002\u300C\u539F\u6587\u300D\u2192 \u7528\u9ED8\u8BA4\u7C7B\u522B\u81EA\u52A8\u51FA\u7801\uFF1B\u300C\u539F\u6587|\u7C7B\u522B\u300D\u2192 \u6307\u5B9A\u7C7B\u522B\u81EA\u52A8\u51FA\u7801\uFF1B\u300C\u539F\u6587=\u4EE3\u53F7\u300D\u2192 \u624B\u52A8\u4EE3\u53F7\uFF08\u672A\u5206\u7C7B\uFF09\u3002\u7A7A\u884C\u5FFD\u7565\u3002",
     batchSave: "\u6DFB\u52A0",
     previewWarn: "\u8DF3\u8FC7\uFF1A",
     dupInBatch: "\u6279\u91CF\u5185\u91CD\u590D",
     importMergeOk: "\u5DF2\u63D2\u5165 %d \u6761\u65B0\u6620\u5C04",
-    crudNote: "\u6821\u9A8C\u89C4\u5219\uFF1A\u539F\u6587\u4E0E\u4EE3\u53F7\u5747\u4E0D\u53EF\u4E3A\u7A7A\uFF1B\u4EE3\u53F7\u4EC5\u5141\u8BB8 A-Z a-z 0-9 _\uFF1B\u4EE3\u53F7\u5168\u5C40\u552F\u4E00\u3002\u63D0\u793A\uFF1A\u641C\u7D22\u5B9E\u65F6\u7B5B\u9009\uFF1B\u70B9\u51FB\u8868\u5934\u6392\u5E8F\uFF1B\u6DFB\u52A0\u8868\u5355\u5185\u6309\u56DE\u8F66\u63D0\u4EA4\u3002",
+    crudNote: "\u63D0\u793A\uFF1A\u641C\u7D22\u5B9E\u65F6\u7B5B\u9009\uFF08\u539F\u6587/\u4EE3\u53F7/\u7C7B\u522B\uFF09\uFF1B\u7528\u7C7B\u522B\u4E0B\u62C9\u7B5B\u9009\uFF1B\u70B9\u51FB\u8868\u5934\u6392\u5E8F\uFF1B\u65B0\u589E\u65F6\u6309\u6240\u9009\u7C7B\u522B\u81EA\u52A8\u51FA\u7801\uFF1B\u6BCF\u9875 10 \u6761\u5206\u9875\u3002",
     // import
     importTitle: "\u5BFC\u5165\u6620\u5C04\u8868\uFF08\u7C98\u8D34 JSON\uFF09",
-    importFormat: '\u683C\u5F0F\uFF1A{ "prefix":"[[", "suffix":"]]", "mappings":[{ "real":"...", "code":"PROJ_01" }] }\u3002',
+    importFormat: '\u683C\u5F0F\uFF1A{ "prefix":"[[", "suffix":"]]", "mappings":[{ "real":"...", "code":"PROJ_01", "category":"platform" }] }\u3002',
     overwriteBtn: "\u6E05\u7A7A\u540E\u63D2\u5165",
     mergeBtn: "\u63D2\u5165",
     importHelp: "\u63D2\u5165\uFF1A\u628A\u5BFC\u5165\u7684\u6620\u5C04\u8FFD\u52A0\u5230\u73B0\u6709\u5217\u8868\uFF0C\u5DF2\u6709\u4EE3\u53F7\u4E0D\u4F1A\u91CD\u590D\u6DFB\u52A0\uFF08\u4FDD\u7559\u4F60\u73B0\u6709\u7684\u6761\u76EE\uFF09\u3002\u6E05\u7A7A\u540E\u63D2\u5165\uFF1A\u5148\u6E05\u7A7A\u73B0\u6709\u5168\u90E8\u6620\u5C04\uFF0C\u518D\u7528\u5BFC\u5165\u5185\u5BB9\u66FF\u6362\uFF08\u76F8\u5F53\u4E8E\u6574\u8868\u91CD\u6765\uFF09\u3002",
@@ -205,25 +260,71 @@ var STR = {
     bareTitleSkip: "\u5DF2\u8DF3\u8FC7 %d \u6761\u542B\u975E\u6CD5\u6587\u4EF6\u540D\u5B57\u7B26\u7684\u6807\u9898\u8FD8\u539F",
     prefixCopied: "\u5DF2\u590D\u5236 AI \u63D0\u793A\u8BCD\u524D\u7F00\u5230\u526A\u8D34\u677F",
     copyFail: "\u590D\u5236\u5931\u8D25\uFF1A",
-    promptPrefix: "\u6CE8\u610F\uFF1A\u4EE5\u4E0B\u6587\u672C\u4E2D\u7684 %PXXX%S \u5F62\u5F0F\u5B57\u7B26\u4E32\u662F\u5360\u4F4D\u4EE3\u53F7\uFF08\u4F8B\u5982 %PPROJ_01%S\u3001%PORG_ABC%S\uFF09\uFF0C\u4EE3\u8868\u88AB\u8131\u654F\u7684\u771F\u5B9E\u5B9E\u4F53\u3002\u8BF7\u4E25\u683C\u539F\u6837\u4FDD\u7559\u8FD9\u4E9B\u4EE3\u53F7\uFF0C\u4E0D\u8981\u7FFB\u8BD1\u3001\u89E3\u91CA\u3001\u6539\u5199\u6216\u731C\u6D4B\u5176\u542B\u4E49\uFF1B\u82E5\u9700\u63D0\u53CA\uFF0C\u8BF7\u7EE7\u7EED\u4F7F\u7528\u540C\u4E00\u4EE3\u53F7\u3002"
+    promptPrefix: "\u6CE8\u610F\uFF1A\u4EE5\u4E0B\u6587\u672C\u4E2D\u7684 %PXXX%S \u5F62\u5F0F\u5B57\u7B26\u4E32\u662F\u5360\u4F4D\u4EE3\u53F7\uFF08\u4F8B\u5982 %PPROJ_01%S\u3001%PORG_ABC%S\uFF09\uFF0C\u4EE3\u8868\u88AB\u8131\u654F\u7684\u771F\u5B9E\u5B9E\u4F53\u3002\u8BF7\u4E25\u683C\u539F\u6837\u4FDD\u7559\u8FD9\u4E9B\u4EE3\u53F7\uFF0C\u4E0D\u8981\u7FFB\u8BD1\u3001\u89E3\u91CA\u3001\u6539\u5199\u6216\u731C\u6D4B\u5176\u542B\u4E49\uFF1B\u82E5\u9700\u63D0\u53CA\uFF0C\u8BF7\u7EE7\u7EED\u4F7F\u7528\u540C\u4E00\u4EE3\u53F7\u3002",
+    // 分类自动代号 (v1.6.0)
+    catTitle: "\u7C7B\u522B",
+    catAdd: "\u65B0\u589E\u7C7B\u522B",
+    catNamePh: "\u540D\u79F0",
+    catPrefixPh: "\u524D\u7F00",
+    catPrefixDesc: "\u4EC5\u5141\u8BB8\u5B57\u6BCD\u6570\u5B57\uFF0C\u5168\u5C40\u552F\u4E00\u3002\u4FEE\u6539\u524D\u7F00\u4E0D\u5F71\u54CD\u5DF2\u6709\u4EE3\u53F7\uFF0C\u4EC5\u65B0\u751F\u6210\u4EE3\u53F7\u4F7F\u7528\u65B0\u524D\u7F00\u3002",
+    catNameErr: "\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A",
+    catPrefixErr: "\u524D\u7F00\u4EC5\u5141\u8BB8\u5B57\u6BCD\u6570\u5B57",
+    catPrefixDup: "\u8BE5\u524D\u7F00\u5DF2\u5B58\u5728",
+    catPrefixKept: "\u5DF2\u6709\u4EE3\u53F7\u4FDD\u6301\u539F\u524D\u7F00\u4E0D\u53D8\uFF0C\u4EC5\u65B0\u751F\u6210\u4EE3\u53F7\u4F7F\u7528\u65B0\u524D\u7F00\u3002",
+    catDel: "\u5220\u9664\u7C7B\u522B",
+    catDelBlock: "\u300C%n\u300D\u7C7B\u522B\u4E0B\u8FD8\u6709 %d \u6761\u6620\u5C04\uFF0C\u8BF7\u5148\u5C06\u8FD9\u4E9B\u6620\u5C04\u6539\u5230\u5176\u4ED6\u7C7B\u522B\u6216\u5220\u9664\u6570\u636E\u540E\uFF0C\u518D\u5220\u9664\u8BE5\u7C7B\u522B\u3002",
+    catFilterAll: "\u5168\u90E8\u7C7B\u522B",
+    addCat: "\u7C7B\u522B",
+    manualCode: "\u624B\u52A8\u6307\u5B9A\u4EE3\u53F7\uFF08\u53EF\u9009\uFF09",
+    autoPreview: "\u5C06\u751F\u6210\uFF1A%c",
+    needCat: "\u8BF7\u9009\u62E9\u7C7B\u522B\u6216\u586B\u5199\u624B\u52A8\u4EE3\u53F7",
+    noCat: "\u672A\u5206\u7C7B",
+    allCats: "\u5168\u90E8\u5206\u7C7B",
+    uncatNotice: "\u68C0\u6D4B\u5230 %d \u6761\u5386\u53F2\u6620\u5C04\u672A\u5206\u7C7B\uFF0C\u53EF\u4E00\u952E\u667A\u80FD\u8865\u7C7B\u522B\uFF0C\u6216\u4FDD\u6301\u672A\u5206\u7C7B\uFF08\u4E0D\u5F71\u54CD\u89E3\u5BC6\uFF09\u3002",
+    smartCat: "\u667A\u80FD\u8865\u7C7B\u522B",
+    smartCatDone: "\u5DF2\u5F52\u7C7B %d \u6761\uFF0C%d \u6761\u65E0\u6CD5\u8BC6\u522B\uFF0C\u8BF7\u624B\u52A8\u5904\u7406\u3002",
+    ok: "\u77E5\u9053\u4E86",
+    legendTitle: "\u4EE3\u53F7\u56FE\u4F8B\uFF08\u524D\u7F00=\u7C7B\u522B\uFF09\uFF1A",
+    realName: "\u539F\u6587",
+    aliasName: "\u4EE3\u53F7",
+    realPlaceholder: "\u539F\u6587",
+    codePlaceholder: "\u4EE3\u53F7\uFF08\u5B57\u6BCD/\u6570\u5B57/\u4E0B\u5212\u7EBF\uFF09",
+    pagerPrev: "\u4E0A\u4E00\u9875",
+    pagerNext: "\u4E0B\u4E00\u9875",
+    catNotFound: "\u672A\u627E\u5230\u8BE5\u7C7B\u522B",
+    batchPerLine: "\u6BCF\u884C\u683C\u5F0F\uFF1A\u539F\u6587|\u7C7B\u522B",
+    batchCatDefault: "\u9ED8\u8BA4\u7C7B\u522B",
+    // 预设类别含义（图例）
+    cat_platform: "\u5E73\u53F0",
+    cat_resource: "\u8D44\u6E90",
+    cat_person: "\u4EBA\u540D",
+    cat_place: "\u5730\u70B9",
+    cat_dept1: "\u90E8\u95E8(\u4E00\u7EA7)",
+    cat_dept2: "\u90E8\u95E8(\u4E8C\u7EA7)"
   }
 };
 function isValidCode(code) {
   return /^[A-Za-z0-9_]+$/.test(code);
 }
+function escapeRegex(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 var ConfirmDialog = class extends import_obsidian.Modal {
-  constructor(app, message, confirmText, cancelText, onConfirm) {
+  constructor(app, message, confirmText, cancelText, onConfirm, hideCancel = false) {
     super(app);
     this.message = message;
     this.confirmText = confirmText;
     this.cancelText = cancelText;
     this.onConfirm = onConfirm;
+    this.hideCancel = hideCancel;
   }
   onOpen() {
     const { contentEl } = this;
     contentEl.createEl("p", { text: this.message });
     const foot = contentEl.createEl("div", { cls: "ai-foot" });
-    foot.createEl("button", { text: this.cancelText }).addEventListener("click", () => this.close());
+    if (!this.hideCancel) {
+      foot.createEl("button", { text: this.cancelText }).addEventListener("click", () => this.close());
+    }
     foot.createEl("button", { text: this.confirmText, cls: "mod-cta" }).addEventListener("click", () => {
       this.close();
       this.onConfirm();
@@ -243,12 +344,23 @@ var BatchAddModal = class extends import_obsidian.Modal {
     this.titleEl.setText(t("batchTitle"));
     contentEl.createEl("p", { cls: "ai-sub", text: t("batchFmt") });
     this.taEl = contentEl.createEl("textarea", { cls: "ai-ta" });
+    const fPer = contentEl.createEl("div", { cls: "ai-fld" });
+    const perLabel = fPer.createEl("label", { cls: "ai-manual-label" });
+    this.perLineEl = perLabel.createEl("input", { type: "checkbox" });
+    perLabel.createSpan({ text: " " + t("batchPerLine") });
+    const fCat = contentEl.createEl("div", { cls: "ai-fld" });
+    fCat.createEl("label", { text: t("batchCatDefault") });
+    this.catSel = fCat.createEl("select", { cls: "ai-cat-sel" });
+    const defId = this.plugin.settings.categories.length ? this.plugin.settings.categories[0].id : "";
+    this.tab.fillCatSelect(this.catSel, false, defId);
     this.previewEl = contentEl.createEl("div", { cls: "ai-preview" });
     const foot = contentEl.createEl("div", { cls: "ai-foot" });
     foot.createEl("button", { text: t("cancel") }).addEventListener("click", () => this.close());
     this.saveBtn = foot.createEl("button", { text: t("batchSave"), cls: "mod-cta" });
     this.saveBtn.addEventListener("click", () => this.doSave());
     this.taEl.addEventListener("input", () => this.parse());
+    this.perLineEl.addEventListener("change", () => this.parse());
+    this.catSel.addEventListener("change", () => this.parse());
     this.parse();
   }
   parse() {
@@ -257,30 +369,55 @@ var BatchAddModal = class extends import_obsidian.Modal {
     const valid = [];
     const skipped = [];
     const seen = /* @__PURE__ */ new Set();
+    const perLine = this.perLineEl.checked;
+    const defCat = this.catSel.value;
     for (const line of raw) {
       const s = line.trim();
       if (!s) continue;
-      const m = s.match(/^(.*?)\s*(?:=|→|,|\t)\s*(.+)$/);
-      if (!m) {
+      const mEq = s.match(/^(.*?)\s*(?:=|→|,|\t)\s*(.+)$/);
+      if (mEq) {
+        const real2 = mEq[1].trim();
+        const code2 = mEq[2].trim().toUpperCase();
+        if (!real2 || !code2) {
+          skipped.push({ line: s, reason: t("errEmpty") });
+          continue;
+        }
+        if (!isValidCode(code2)) {
+          skipped.push({ line: s, reason: t("errChars") });
+          continue;
+        }
+        if (seen.has(code2) || this.plugin.settings.mappings.some((mm) => mm.code === code2)) {
+          skipped.push({ line: s, reason: t("dupInBatch") });
+          continue;
+        }
+        seen.add(code2);
+        valid.push({ real: real2, code: code2, manual: true, category: null });
+        continue;
+      }
+      let real = s;
+      let catId = defCat;
+      if (perLine && s.includes("|")) {
+        const parts = s.split("|");
+        real = parts[0].trim();
+        const cn = parts[1].trim();
+        const fc = this.plugin.resolveCategory(cn);
+        if (!fc) {
+          skipped.push({ line: s, reason: t("catNotFound") });
+          continue;
+        }
+        catId = fc.id;
+      }
+      if (!real) {
         skipped.push({ line: s, reason: t("errEmpty") });
         continue;
       }
-      const real = m[1].trim();
-      const code = m[2].trim();
-      if (!real || !code) {
-        skipped.push({ line: s, reason: t("errEmpty") });
+      const cat = this.plugin.categoryById(catId);
+      if (!cat) {
+        skipped.push({ line: s, reason: t("needCat") });
         continue;
       }
-      if (!isValidCode(code)) {
-        skipped.push({ line: s, reason: t("errChars") });
-        continue;
-      }
-      if (seen.has(code) || this.plugin.settings.mappings.some((mm) => mm.code === code)) {
-        skipped.push({ line: s, reason: t("dupInBatch") });
-        continue;
-      }
-      seen.add(code);
-      valid.push({ real, code });
+      const code = this.plugin.generateCode(cat);
+      valid.push({ real, code, manual: false, category: cat.id });
     }
     this.preview = { valid, skipped };
     this.previewEl.empty();
@@ -305,10 +442,13 @@ var BatchAddModal = class extends import_obsidian.Modal {
       this.close();
       return;
     }
-    this.plugin.settings.mappings.push(...this.preview.valid);
+    for (const v of this.preview.valid) {
+      this.plugin.settings.mappings.push({ real: v.real, code: v.code, category: v.category, manual: v.manual });
+    }
     void this.plugin.save();
     new import_obsidian.Notice(this.plugin.t("addedN").replace("%d", String(this.preview.valid.length)));
     this.tab.renderTable();
+    this.tab.renderUncatNotice();
     this.close();
   }
   onClose() {
@@ -343,11 +483,13 @@ var ImportModal = class extends import_obsidian.Modal {
     for (const m of raw) {
       const real = typeof m.real === "string" ? m.real.trim() : "";
       const code = typeof m.code === "string" ? m.code.trim() : "";
+      const catRaw = typeof m.category === "string" ? m.category : null;
+      const cat = catRaw && this.plugin.settings.categories.some((c) => c.id === catRaw) ? catRaw : null;
       if (!real || !code) throw new Error(t("errEmptyField"));
       if (!isValidCode(code)) throw new Error(t("errInvalid") + code);
       if (seen.has(code)) throw new Error(t("errDuplicate") + code);
       seen.add(code);
-      mappings.push({ real, code });
+      mappings.push({ real, code, category: cat, manual: false });
     }
     return {
       prefix: typeof obj.prefix === "string" ? obj.prefix : "",
@@ -382,6 +524,7 @@ var ImportModal = class extends import_obsidian.Modal {
         new import_obsidian.Notice(t("imported").replace("%d", String(mappings.length)));
       }
       this.tab.renderTable();
+      this.tab.renderUncatNotice();
       this.close();
     } catch (e) {
       new import_obsidian.Notice(t("importFail") + (e instanceof Error ? e.message : String(e)));
@@ -568,6 +711,8 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     this.selected = /* @__PURE__ */ new Set();
     this.editing = null;
     this.addOpen = false;
+    this.page = 0;
+    this.filterCat = FILTER_ALL;
     this.plugin = plugin;
   }
   display() {
@@ -604,6 +749,10 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     ).addButton(
       (btn) => btn.setButtonText(t("importBtn")).onClick(() => new ImportModal(this.app, this.plugin, this).open())
     );
+    new import_obsidian.Setting(containerEl).setName(t("catTitle")).setHeading();
+    this.catBarEl = containerEl.createEl("div", { cls: "ai-catbar" });
+    this.uncatEl = containerEl.createEl("div", { cls: "ai-uncat is-hidden" });
+    containerEl.createEl("div", { cls: "ai-note", text: t("catPrefixDesc") });
     new import_obsidian.Setting(containerEl).setName(t("mappingTitle")).setHeading();
     const toolbar = containerEl.createEl("div", { cls: "ai-toolbar" });
     const searchWrap = toolbar.createEl("div", { cls: "ai-search" });
@@ -611,6 +760,14 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     this.searchEl.value = this.searchTerm;
     this.searchEl.addEventListener("input", (e) => {
       this.searchTerm = e.target.value;
+      this.page = 0;
+      this.renderTable();
+    });
+    this.filterSel = toolbar.createEl("select", { cls: "ai-catfilter" });
+    this.fillCatSelect(this.filterSel, true, this.filterCat, true);
+    this.filterSel.addEventListener("change", () => {
+      this.filterCat = this.filterSel.value;
+      this.page = 0;
       this.renderTable();
     });
     this.countEl = toolbar.createEl("span", { cls: "ai-count" });
@@ -619,8 +776,8 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     addB.addEventListener("click", () => this.toggleAddForm());
     const batchB = btnBar.createEl("button", { text: t("batchAdd") });
     batchB.addEventListener("click", () => new BatchAddModal(this.app, this.plugin, this).open());
-    const delSelB = btnBar.createEl("button", { text: t("delSel"), cls: "mod-warning" });
-    delSelB.addEventListener("click", () => this.deleteSelected());
+    this.delSelBtn = btnBar.createEl("button", { text: t("delSel"), cls: "mod-warning" });
+    this.delSelBtn.addEventListener("click", () => this.deleteSelected());
     const clearB = btnBar.createEl("button", { text: t("clearAll"), cls: "mod-warning" });
     clearB.addEventListener("click", () => this.clearAll());
     this.addFormEl = containerEl.createEl("div", { cls: "ai-addform is-hidden" });
@@ -630,17 +787,28 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     this.addRealEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        this.addCodeEl.focus();
+        this.addCatEl.focus();
       }
     });
-    const f2 = this.addFormEl.createEl("div", { cls: "ai-fld" });
-    f2.createEl("label", { text: t("aliasName") });
-    this.addCodeEl = f2.createEl("input", { type: "text", placeholder: t("codePlaceholder") });
+    const fCat = this.addFormEl.createEl("div", { cls: "ai-fld" });
+    fCat.createEl("label", { text: t("addCat") });
+    this.addCatEl = fCat.createEl("select", { cls: "ai-cat-sel" });
+    this.fillCatSelect(this.addCatEl, true, this.plugin.settings.categories[0]?.id ?? FILTER_UNCAT);
+    this.addCatEl.addEventListener("change", () => this.updateAutoPreview());
+    const fMan = this.addFormEl.createEl("div", { cls: "ai-fld" });
+    const manLabel = fMan.createEl("label", { cls: "ai-manual-label" });
+    this.addManualEl = manLabel.createEl("input", { type: "checkbox" });
+    manLabel.createSpan({ text: " " + t("manualCode") });
+    this.addCodeEl = fMan.createEl("input", { type: "text", placeholder: t("codePlaceholder"), cls: "ai-code-in is-hidden" });
     this.addCodeEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
         this.saveInlineAdd();
       }
+    });
+    this.addManualEl.addEventListener("change", () => {
+      this.addCodeEl.toggleClass("is-hidden", !this.addManualEl.checked);
+      this.updateAutoPreview();
     });
     const f3 = this.addFormEl.createEl("div", { cls: "ai-fld" });
     f3.createEl("label", { text: " " });
@@ -650,31 +818,220 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     f4.createEl("button", { text: t("cancel") }).addEventListener("click", () => this.toggleAddForm(true));
     this.addHintEl = this.addFormEl.createEl("div", { cls: "ai-hint" });
     this.tableEl = containerEl.createEl("div", { cls: "ai-table" });
+    this.pagerEl = containerEl.createEl("div", { cls: "ai-pager" });
     containerEl.createEl("div", { cls: "ai-note", text: t("crudNote") });
+    this.renderCategoryBar();
+    this.renderUncatNotice();
     this.renderTable();
   }
+  // ---------- category manager ----------
+  fillCatSelect(sel, includeUncat, selectedId, includeAll = false) {
+    const t = (k) => this.plugin.t(k);
+    sel.empty();
+    if (includeAll) {
+      const o = sel.createEl("option");
+      o.textContent = t("allCats");
+      o.value = FILTER_ALL;
+      sel.appendChild(o);
+    }
+    if (includeUncat) {
+      const o = sel.createEl("option");
+      o.textContent = t("noCat");
+      o.value = FILTER_UNCAT;
+      sel.appendChild(o);
+    }
+    for (const c of this.plugin.settings.categories) {
+      const o = sel.createEl("option");
+      o.textContent = c.name + " (" + c.prefix + ")";
+      o.value = c.id;
+      sel.appendChild(o);
+    }
+    const vals = Array.from(sel.options).map((o) => o.value);
+    sel.value = vals.includes(selectedId) ? selectedId : includeAll ? FILTER_ALL : this.plugin.settings.categories[0]?.id ?? FILTER_UNCAT;
+  }
+  normCat(v) {
+    return v === FILTER_UNCAT || v === FILTER_ALL || !v ? null : v;
+  }
+  renderCategoryBar() {
+    if (!this.catBarEl) return;
+    const t = (k) => this.plugin.t(k);
+    this.catBarEl.empty();
+    const chips = this.catBarEl.createEl("div", { cls: "ai-chips" });
+    for (const c of this.plugin.settings.categories) {
+      const chip = chips.createEl("div", { cls: "ai-chip" });
+      const nameIn = chip.createEl("input", { type: "text", value: c.name, cls: "ai-chip-name" });
+      nameIn.addEventListener("change", () => {
+        const v = nameIn.value.trim();
+        if (!v) {
+          nameIn.value = c.name;
+          return;
+        }
+        c.name = v;
+        void this.plugin.save();
+        this.refreshFilterOptions();
+      });
+      const preIn = chip.createEl("input", { type: "text", value: c.prefix, cls: "ai-chip-prefix" });
+      preIn.addEventListener("change", () => this.onPrefixChange(c, preIn));
+      const del = chip.createEl("button", { cls: "ai-chip-del" });
+      (0, import_obsidian.setIcon)(del, "x");
+      del.setAttribute("aria-label", t("catDel"));
+      del.addEventListener("click", () => this.deleteCategory(c));
+    }
+    const addRow = this.catBarEl.createEl("div", { cls: "ai-addcat" });
+    const nIn = addRow.createEl("input", { type: "text", placeholder: t("catNamePh") });
+    const pIn = addRow.createEl("input", { type: "text", placeholder: t("catPrefixPh") });
+    const addBtn = addRow.createEl("button", { text: "+ " + t("catAdd"), cls: "mod-cta" });
+    addBtn.addEventListener("click", () => this.addCategory(nIn, pIn));
+  }
+  onPrefixChange(c, inp) {
+    const t = (k) => this.plugin.t(k);
+    const v = inp.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (!v) {
+      inp.value = c.prefix;
+      return;
+    }
+    if (this.plugin.settings.categories.some((x) => x.id !== c.id && x.prefix === v)) {
+      new import_obsidian.Notice(t("catPrefixDup"));
+      inp.value = c.prefix;
+      return;
+    }
+    c.prefix = v;
+    inp.value = v;
+    void this.plugin.save();
+    new import_obsidian.Notice(t("catPrefixKept"));
+    this.renderTable();
+  }
+  addCategory(nIn, pIn) {
+    const t = (k) => this.plugin.t(k);
+    const name = nIn.value.trim();
+    let prefix = pIn.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (!name) {
+      new import_obsidian.Notice(t("catNameErr"));
+      return;
+    }
+    if (!prefix) prefix = name.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+    if (!prefix) {
+      new import_obsidian.Notice(t("catPrefixErr"));
+      return;
+    }
+    if (this.plugin.settings.categories.some((cc) => cc.prefix === prefix)) {
+      new import_obsidian.Notice(t("catPrefixDup"));
+      return;
+    }
+    this.plugin.settings.categories.push({ id: "cat_" + Date.now().toString(36), name, prefix, seq: 0 });
+    void this.plugin.save();
+    nIn.value = "";
+    pIn.value = "";
+    this.renderCategoryBar();
+    this.refreshFilterOptions();
+    this.renderTable();
+  }
+  deleteCategory(c) {
+    const t = (k) => this.plugin.t(k);
+    const n = this.plugin.settings.mappings.filter((m) => m.category === c.id).length;
+    if (n > 0) {
+      new ConfirmDialog(
+        this.app,
+        t("catDelBlock").replace("%n", c.name).replace("%d", String(n)),
+        t("ok"),
+        "",
+        () => {
+        },
+        true
+      ).open();
+      return;
+    }
+    this.plugin.settings.categories = this.plugin.settings.categories.filter((x) => x.id !== c.id);
+    void this.plugin.save();
+    this.renderCategoryBar();
+    this.refreshFilterOptions();
+    this.renderTable();
+  }
+  refreshFilterOptions() {
+    if (!this.filterSel) return;
+    const cur = this.filterSel.value;
+    this.fillCatSelect(this.filterSel, true, cur, true);
+  }
+  // ---------- uncategorized notice ----------
+  renderUncatNotice() {
+    if (!this.uncatEl) return;
+    const t = (k) => this.plugin.t(k);
+    const n = this.plugin.settings.mappings.filter((m) => m.category == null).length;
+    this.uncatEl.empty();
+    if (n === 0) {
+      this.uncatEl.toggleClass("is-hidden", true);
+      return;
+    }
+    this.uncatEl.toggleClass("is-hidden", false);
+    this.uncatEl.createEl("span", { text: t("uncatNotice").replace("%d", String(n)) });
+    const btn = this.uncatEl.createEl("button", { text: t("smartCat"), cls: "mod-cta" });
+    btn.addEventListener("click", () => this.smartCategorize());
+  }
+  smartCategorize() {
+    const r = this.plugin.categorizeSmart();
+    void this.plugin.save();
+    new import_obsidian.Notice(
+      this.plugin.t("smartCatDone").replace("%d", String(r.done)).replace("%t", String(r.remain))
+    );
+    this.renderUncatNotice();
+    this.renderTable();
+  }
+  // ---------- mapping table ----------
   toggleAddForm(forceClose = false) {
     this.addOpen = forceClose ? false : !this.addOpen;
     this.addFormEl.toggleClass("is-hidden", !this.addOpen);
     this.addHintEl.setText("");
     if (this.addOpen) {
       this.addRealEl.focus();
+      this.updateAutoPreview();
     } else {
       this.addRealEl.value = "";
       this.addCodeEl.value = "";
+      this.addManualEl.checked = false;
+      this.addCodeEl.toggleClass("is-hidden", true);
+      this.addCatEl.value = this.plugin.settings.categories[0]?.id ?? FILTER_UNCAT;
+      this.updateAutoPreview();
+    }
+  }
+  updateAutoPreview() {
+    const t = (k) => this.plugin.t(k);
+    const cat = this.plugin.categoryById(this.addCatEl.value);
+    if (cat && !this.addManualEl.checked) {
+      const preview = cat.prefix + String(cat.seq + 1).padStart(3, "0");
+      this.addHintEl.setText(t("autoPreview").replace("%c", this.plugin.wrap(preview)));
+      this.addHintEl.className = "ai-hint";
+    } else if (this.addManualEl.checked) {
+      this.addHintEl.setText("");
+    } else {
+      this.addHintEl.setText(t("needCat"));
+      this.addHintEl.className = "ai-hint ai-err";
     }
   }
   filteredMappings() {
-    let list = this.plugin.settings.mappings.map((m, i) => ({ ...m, i }));
+    let list = this.plugin.settings.mappings.map((m, i) => ({
+      real: m.real,
+      code: m.code,
+      category: m.category,
+      manual: m.manual,
+      i
+    }));
     const q = this.searchTerm.trim().toLowerCase();
     if (q) {
-      list = list.filter((m) => m.real.toLowerCase().includes(q) || m.code.toLowerCase().includes(q));
+      list = list.filter((m) => {
+        const cat = this.plugin.categoryById(m.category);
+        return m.real.toLowerCase().includes(q) || m.code.toLowerCase().includes(q) || !!cat && cat.name.toLowerCase().includes(q);
+      });
+    }
+    if (this.filterCat === FILTER_UNCAT) {
+      list = list.filter((m) => !m.category);
+    } else if (this.filterCat && this.filterCat !== FILTER_ALL) {
+      list = list.filter((m) => (m.category || "") === this.filterCat);
     }
     if (this.sortKey) {
       const key = this.sortKey;
       list.sort((a, b) => {
-        const va = a[key].toLowerCase();
-        const vb = b[key].toLowerCase();
+        const va = (a[key] || "").toLowerCase();
+        const vb = (b[key] || "").toLowerCase();
         return va < vb ? -1 * this.sortDir : va > vb ? 1 * this.sortDir : 0;
       });
     }
@@ -685,25 +1042,18 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     const tableEl = this.tableEl;
     tableEl.empty();
     const list = this.filteredMappings();
+    const pages = Math.max(1, Math.ceil(list.length / PAGE));
+    if (this.page >= pages) this.page = pages - 1;
+    if (this.page < 0) this.page = 0;
     this.countEl.setText(`\u5171 ${this.plugin.settings.mappings.length} \u6761 \xB7 \u663E\u793A ${list.length} \u6761`);
     const table = tableEl.createEl("table", { cls: "ai-alias-tbl" });
     const thead = table.createEl("thead");
     const htr = thead.createEl("tr");
-    const thCb = htr.createEl("th");
-    const selAll = thCb.createEl("input", { type: "checkbox" });
-    selAll.addEventListener("change", (e) => {
-      const checked = e.target.checked;
-      if (checked) list.forEach((m) => this.selected.add(m.i));
-      else this.selected.clear();
-      this.renderTable();
-    });
-    const thReal = htr.createEl("th", {
-      text: t("thReal") + (this.sortKey === "real" ? this.sortDir > 0 ? " \u25B2" : " \u25BC" : "")
-    });
+    htr.createEl("th", { text: "" });
+    const thReal = htr.createEl("th", { text: t("thReal") + this.sortIndicator("real") });
     thReal.addEventListener("click", () => this.toggleSort("real"));
-    const thCode = htr.createEl("th", {
-      text: t("thCode") + (this.sortKey === "code" ? this.sortDir > 0 ? " \u25B2" : " \u25BC" : "")
-    });
+    const thCat = htr.createEl("th", { text: t("thCat") });
+    const thCode = htr.createEl("th", { text: t("thCode") + this.sortIndicator("code") });
     thCode.addEventListener("click", () => this.toggleSort("code"));
     thCode.addClass("ai-right");
     htr.createEl("th", { text: t("actions") }).addClass("ai-right");
@@ -711,41 +1061,51 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     if (this.plugin.settings.mappings.length === 0) {
       const tr = tbody.createEl("tr");
       const td = tr.createEl("td", { text: t("empty") });
-      td.setAttribute("colspan", "4");
+      td.setAttribute("colspan", "5");
       td.addClass("ai-empty");
+      this.renderPager(pages);
       return;
     }
-    if (list.length === 0) {
+    const start = this.page * PAGE;
+    const items = list.slice(start, start + PAGE);
+    if (items.length === 0) {
       const tr = tbody.createEl("tr");
       const td = tr.createEl("td", { text: t("filteredEmpty") });
-      td.setAttribute("colspan", "4");
+      td.setAttribute("colspan", "5");
       td.addClass("ai-empty");
+      this.renderPager(pages);
       return;
     }
-    for (const m of list) {
+    for (const m of items) {
       const tr = tbody.createEl("tr");
       if (this.selected.has(m.i)) tr.addClass("ai-sel");
       const tdCb = tr.createEl("td");
-      const cb = tdCb.createEl("input", { type: "checkbox" });
-      cb.checked = this.selected.has(m.i);
-      cb.addEventListener("change", (e) => {
-        const checked = e.target.checked;
-        if (checked) this.selected.add(m.i);
-        else this.selected.delete(m.i);
-        tr.toggleClass("ai-sel", checked);
-      });
+      if (this.editing === m.i) {
+      } else {
+        const cb = tdCb.createEl("input", { type: "checkbox" });
+        cb.checked = this.selected.has(m.i);
+        cb.addEventListener("change", (e) => {
+          const checked = e.target.checked;
+          if (checked) this.selected.add(m.i);
+          else this.selected.delete(m.i);
+          tr.toggleClass("ai-sel", checked);
+          this.updateBulk();
+        });
+      }
       if (this.editing === m.i) {
         const tdR = tr.createEl("td");
         const inR = tdR.createEl("input", { type: "text", cls: "ai-edit-in" });
         inR.value = m.real;
+        const tdCat = tr.createEl("td");
+        const sel = tdCat.createEl("select", { cls: "ai-cat-sel" });
+        this.fillCatSelect(sel, true, m.category || FILTER_UNCAT);
         const tdC = tr.createEl("td");
-        const inC = tdC.createEl("input", { type: "text", cls: "ai-edit-in" });
-        inC.value = m.code;
+        tdC.createEl("span", { text: this.plugin.wrap(m.code), cls: "ai-code" });
         const tdA = tr.createEl("td");
         tdA.addClass("ai-right");
         tdA.createEl("button", { text: t("addSave"), cls: "mod-cta" }).addEventListener(
           "click",
-          () => this.saveEdit(m.i, inR.value, inC.value)
+          () => this.saveEdit(m.i, inR.value, sel.value)
         );
         tdA.createEl("button", { text: t("cancel") }).addEventListener("click", () => {
           this.editing = null;
@@ -753,6 +1113,8 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
         });
       } else {
         tr.createEl("td", { text: m.real });
+        const cat = this.plugin.categoryById(m.category);
+        tr.createEl("td", { text: cat ? cat.name : t("noCat") });
         const tdC = tr.createEl("td", { text: this.plugin.wrap(m.code) });
         tdC.addClass("ai-code");
         const tdA = tr.createEl("td");
@@ -768,6 +1130,41 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
         );
       }
     }
+    this.renderPager(pages);
+  }
+  sortIndicator(key) {
+    if (this.sortKey !== key) return "";
+    return this.sortDir > 0 ? " \u25B2" : " \u25BC";
+  }
+  renderPager(pages) {
+    const t = (k) => this.plugin.t(k);
+    this.pagerEl.empty();
+    if (pages <= 1) return;
+    const prev = this.pagerEl.createEl("button", { text: t("pagerPrev") });
+    prev.addEventListener("click", () => {
+      if (this.page > 0) {
+        this.page--;
+        this.renderTable();
+      }
+    });
+    for (let i = 0; i < pages; i++) {
+      const b = this.pagerEl.createEl("button", { text: String(i + 1) });
+      if (i === this.page) b.addClass("mod-cta");
+      b.addEventListener("click", () => {
+        this.page = i;
+        this.renderTable();
+      });
+    }
+    const next = this.pagerEl.createEl("button", { text: t("pagerNext") });
+    next.addEventListener("click", () => {
+      if (this.page < pages - 1) {
+        this.page++;
+        this.renderTable();
+      }
+    });
+  }
+  updateBulk() {
+    if (this.delSelBtn) this.delSelBtn.setText(this.plugin.t("delSel") + " (" + this.selected.size + ")");
   }
   toggleSort(k) {
     if (this.sortKey === k) this.sortDir *= -1;
@@ -777,51 +1174,71 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     }
     this.renderTable();
   }
+  hint(msg) {
+    this.addHintEl.setText(msg);
+    this.addHintEl.className = "ai-hint ai-err";
+  }
   saveInlineAdd() {
     const t = (k) => this.plugin.t(k);
     const real = this.addRealEl.value.trim();
-    const code = this.addCodeEl.value.trim();
-    if (!real || !code) {
-      this.addHintEl.setText(t("errEmpty"));
-      this.addHintEl.className = "ai-hint ai-err";
+    const catId = this.addCatEl.value;
+    const manual = this.addManualEl.checked;
+    const codeVal = this.addCodeEl.value.trim().toUpperCase();
+    if (!real) {
+      this.hint(t("errEmpty"));
       return;
     }
-    if (!isValidCode(code)) {
-      this.addHintEl.setText(t("errChars"));
-      this.addHintEl.className = "ai-hint ai-err";
-      return;
+    if (manual) {
+      if (!isValidCode(codeVal)) {
+        this.hint(t("errChars"));
+        return;
+      }
+      if (this.plugin.settings.mappings.some((m) => m.code === codeVal)) {
+        this.hint(t("errDup"));
+        return;
+      }
+      this.plugin.settings.mappings.push({ real, code: codeVal, category: this.normCat(catId), manual: true });
+      void this.plugin.save();
+      this.afterAdd(codeVal);
+    } else {
+      const cat = this.plugin.categoryById(catId);
+      if (!cat) {
+        this.hint(t("needCat"));
+        return;
+      }
+      const code = this.plugin.generateCode(cat);
+      this.plugin.settings.mappings.push({ real, code, category: cat.id, manual: false });
+      void this.plugin.save();
+      this.afterAdd(code);
     }
-    if (this.plugin.settings.mappings.some((m) => m.code === code)) {
-      this.addHintEl.setText(t("errDup"));
-      this.addHintEl.className = "ai-hint ai-err";
-      return;
-    }
-    this.plugin.settings.mappings.push({ real, code });
-    void this.plugin.save();
-    this.addHintEl.setText(t("added") + this.plugin.wrap(code));
-    this.addHintEl.className = "ai-hint ai-ok";
+  }
+  afterAdd(code) {
+    this.plugin.t("added");
+    new import_obsidian.Notice(this.plugin.t("added") + this.plugin.wrap(code));
     this.addRealEl.value = "";
     this.addCodeEl.value = "";
-    this.addRealEl.focus();
+    this.addManualEl.checked = false;
+    this.addCodeEl.toggleClass("is-hidden", true);
+    this.addCatEl.value = "";
+    this.updateAutoPreview();
     this.renderTable();
+    this.renderUncatNotice();
   }
-  saveEdit(i, realRaw, codeRaw) {
+  saveEdit(i, realRaw, catId) {
     const t = (k) => this.plugin.t(k);
     const real = realRaw.trim();
-    const code = codeRaw.trim();
-    if (!real || !code) {
+    if (!real) {
       new import_obsidian.Notice(t("errEmpty"));
       return;
     }
-    if (!isValidCode(code)) {
-      new import_obsidian.Notice(t("errChars"));
-      return;
+    const old = this.plugin.settings.mappings[i];
+    let code = old.code;
+    const manual = !!old.manual;
+    if (!manual && catId !== (old.category || "")) {
+      const cat = this.plugin.categoryById(catId);
+      if (cat) code = this.plugin.generateCode(cat);
     }
-    if (this.plugin.settings.mappings.some((m, j) => j !== i && m.code === code)) {
-      new import_obsidian.Notice(t("errDup"));
-      return;
-    }
-    this.plugin.settings.mappings[i] = { real, code };
+    this.plugin.settings.mappings[i] = { real, code, category: this.normCat(catId), manual };
     this.editing = null;
     void this.plugin.save();
     new import_obsidian.Notice(t("edited"));
@@ -837,6 +1254,7 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     void this.plugin.save();
     new import_obsidian.Notice(this.plugin.t("delOne"));
     this.renderTable();
+    this.renderUncatNotice();
   }
   deleteSelected() {
     if (this.selected.size === 0) {
@@ -856,6 +1274,7 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
         void this.plugin.save();
         new import_obsidian.Notice(this.plugin.t("delN").replace("%d", String(n)));
         this.renderTable();
+        this.renderUncatNotice();
       }
     ).open();
   }
@@ -874,6 +1293,7 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
         void this.plugin.save();
         new import_obsidian.Notice(this.plugin.t("delN").replace("%d", String(n)));
         this.renderTable();
+        this.renderUncatNotice();
       }
     ).open();
   }
@@ -882,6 +1302,86 @@ var AIAliasPlugin = class extends import_obsidian.Plugin {
   t(key) {
     const lang = this.settings.language || "en";
     return STR[lang] && STR[lang][key] !== void 0 ? STR[lang][key] : STR.en[key];
+  }
+  defaultCategories() {
+    const lang = this.settings.language === "zh" ? "zh" : "en";
+    return PRESET_DEFS.map((d) => ({
+      id: d.key,
+      key: d.key,
+      name: d[lang],
+      prefix: d.prefix,
+      seq: 0
+    }));
+  }
+  categoryById(id) {
+    if (!id) return void 0;
+    return this.settings.categories.find((c) => c.id === id);
+  }
+  categoryMeaning(cat) {
+    if (cat.key) {
+      const v = this.t("cat_" + cat.key);
+      if (v) return v;
+    }
+    return cat.name;
+  }
+  resolveCategory(token) {
+    const t = token.trim().toLowerCase();
+    if (!t) return void 0;
+    return this.settings.categories.find(
+      (c) => c.name.toLowerCase() === t || c.prefix.toLowerCase() === t || c.key && c.key.toLowerCase() === t
+    );
+  }
+  generateCode(cat) {
+    const existing = new Set(this.settings.mappings.map((m) => m.code));
+    let seq = cat.seq;
+    let code;
+    do {
+      seq += 1;
+      code = cat.prefix + String(seq).padStart(3, "0");
+    } while (existing.has(code));
+    cat.seq = seq;
+    return code;
+  }
+  bumpCategorySeqs() {
+    for (const cat of this.settings.categories) {
+      const re = new RegExp("^" + escapeRegex(cat.prefix) + "(\\d+)$");
+      let max = 0;
+      for (const m of this.settings.mappings) {
+        const mm = m.code.match(re);
+        if (mm) {
+          const n = parseInt(mm[1], 10);
+          if (n > max) max = n;
+        }
+      }
+      if (max > cat.seq) cat.seq = max;
+    }
+  }
+  categorizeSmart() {
+    let done = 0;
+    for (const m of this.settings.mappings) {
+      if (m.category != null) continue;
+      const re = new RegExp(
+        "^(" + this.settings.categories.map((c) => "(" + escapeRegex(c.prefix) + ")").join("|") + ")(\\d+)$"
+      );
+      const mm = m.code.match(re);
+      if (mm) {
+        const cat = this.settings.categories.find((c) => c.prefix === mm[1]);
+        if (cat) {
+          m.category = cat.id;
+          const n = parseInt(mm[2], 10);
+          if (n > cat.seq) cat.seq = n;
+          done++;
+        }
+      }
+    }
+    return { done, remain: this.settings.mappings.filter((m) => m.category == null).length };
+  }
+  buildLegend() {
+    const lines = ["# " + this.t("legendTitle")];
+    for (const cat of this.settings.categories) {
+      lines.push("# " + cat.prefix + " = " + this.categoryMeaning(cat));
+    }
+    return lines.join("\n");
   }
   async onload() {
     await this.loadSettings();
@@ -921,7 +1421,7 @@ var AIAliasPlugin = class extends import_obsidian.Plugin {
       callback: () => {
         const p = this.settings.prefix;
         const s = this.settings.suffix;
-        const text = this.t("promptPrefix").split("%P").join(p).split("%S").join(s);
+        const text = this.t("promptPrefix").split("%P").join(p).split("%S").join(s) + "\n\n" + this.buildLegend();
         void navigator.clipboard.writeText(text).then(() => new import_obsidian.Notice(this.t("prefixCopied"))).catch((e) => new import_obsidian.Notice(this.t("copyFail") + (e instanceof Error ? e.message : String(e))));
       }
     });
@@ -1016,6 +1516,21 @@ var AIAliasPlugin = class extends import_obsidian.Plugin {
     const data = await this.loadData();
     this.settings = Object.assign({}, DEFAULT_SETTINGS, data ?? {});
     if (!Array.isArray(this.settings.mappings)) this.settings.mappings = [];
+    if (!Array.isArray(this.settings.categories)) this.settings.categories = [];
     if (this.settings.language !== "zh") this.settings.language = "en";
+    let migrated = false;
+    if (this.settings.categories.length === 0 && this.settings.schemaVersion !== SCHEMA_VERSION) {
+      this.settings.categories = this.defaultCategories();
+      migrated = true;
+    }
+    for (const m of this.settings.mappings) {
+      if (m.category === void 0) m.category = null;
+      if (m.manual === void 0) m.manual = false;
+    }
+    this.bumpCategorySeqs();
+    if (migrated) {
+      this.settings.schemaVersion = SCHEMA_VERSION;
+      await this.save();
+    }
   }
 };

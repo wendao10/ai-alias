@@ -1,15 +1,18 @@
-import { Plugin, PluginSettingTab, Setting, Notice, Modal, Editor, App, TFile } from 'obsidian';
+import { Plugin, PluginSettingTab, Setting, Notice, Modal, Editor, App, TFile, setIcon } from 'obsidian';
+
+interface Category {
+	id: string;
+	key?: string;
+	name: string;
+	prefix: string;
+	seq: number;
+}
 
 interface Mapping {
 	real: string;
 	code: string;
-}
-
-interface BareHit {
-	start: number;
-	end: number;
-	code: string;
-	real: string;
+	category?: string | null;
+	manual?: boolean;
 }
 
 interface AIAliasSettings {
@@ -17,14 +20,39 @@ interface AIAliasSettings {
 	suffix: string;
 	language: 'en' | 'zh';
 	mappings: Mapping[];
+	categories: Category[];
+	schemaVersion?: number;
 }
+
+const SCHEMA_VERSION = 2;
+const FILTER_ALL = '__all__';
+const FILTER_UNCAT = '__uncat__';
 
 const DEFAULT_SETTINGS: AIAliasSettings = {
 	prefix: '[[',
 	suffix: ']]',
 	language: 'en',
-	mappings: []
+	mappings: [],
+	categories: []
 };
+
+interface PresetDef {
+	key: string;
+	en: string;
+	zh: string;
+	prefix: string;
+}
+
+const PRESET_DEFS: PresetDef[] = [
+	{ key: 'platform', en: 'Platform', zh: '平台', prefix: 'PLATFORM' },
+	{ key: 'resource', en: 'Resource', zh: '资源', prefix: 'RESOURCE' },
+	{ key: 'person', en: 'Person', zh: '人名', prefix: 'PERSON' },
+	{ key: 'place', en: 'Place', zh: '地点', prefix: 'PLACE' },
+	{ key: 'dept1', en: 'Department L1', zh: '部门(一级)', prefix: 'DEPT1' },
+	{ key: 'dept2', en: 'Department L2', zh: '部门(二级)', prefix: 'DEPT2' }
+];
+
+const PAGE = 10;
 
 const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 	en: {
@@ -42,7 +70,7 @@ const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 		importBtn: 'Import from clipboard',
 		// CRUD manager
 		mappingTitle: 'Mapping table',
-		searchPh: 'Search real name or alias…',
+		searchPh: 'Search real name, alias or category…',
 		batchAdd: 'Batch add',
 		delSel: 'Delete selected',
 		clearAll: 'Clear all',
@@ -50,6 +78,7 @@ const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 		cancel: 'Cancel',
 		thReal: 'Real name',
 		thCode: 'Alias',
+		thCat: 'Category',
 		actions: 'Actions',
 		edit: 'Edit',
 		del: 'Delete',
@@ -67,15 +96,15 @@ const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 		confirmClear: 'Clear all %d mappings? This cannot be undone.',
 		cancelClear: 'Cancelled',
 		batchTitle: 'Batch add mappings',
-		batchFmt: 'One per line: real=code (supports = / → / tab / comma). Blank lines are ignored.',
+		batchFmt: 'One per line. "real" → auto alias in default category; "real|category" → that category; "real=code" → manual alias (uncategorized). Blank lines ignored.',
 		batchSave: 'Add',
 		previewWarn: 'Skipped: ',
 		dupInBatch: 'duplicate in batch',
 		importMergeOk: 'Inserted %d new entries',
-		crudNote: 'Validation: real and alias cannot be empty; alias only allows A-Z a-z 0-9 _; alias must be unique. Tip: search filters live; click a column header to sort; press Enter in the add form to submit.',
+		crudNote: 'Tips: search filters live (real/alias/category); use the category dropdown to filter; click a column header to sort; the add form auto-generates the alias from the chosen category; pages of 10.',
 		// import
 		importTitle: 'Import Mappings (paste JSON)',
-		importFormat: 'Format: { "prefix":"[[", "suffix":"]]", "mappings":[{ "real":"...", "code":"PROJ_01" }] }.',
+		importFormat: 'Format: { "prefix":"[[", "suffix":"]]", "mappings":[{ "real":"...", "code":"PROJ_01", "category":"platform" }] }.',
 		overwriteBtn: 'Clear & insert',
 		mergeBtn: 'Insert',
 		importHelp: 'Insert: append imported mappings to your current list; existing codes are not duplicated (your current entries are kept). Clear & insert: clear all current mappings first, then replace with only the imported content (full reset).',
@@ -111,7 +140,47 @@ const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 		bareTitleSkip: 'Skipped %d title entr(y/ies) with invalid file-name characters',
 		prefixCopied: 'Copied AI prompt prefix to clipboard',
 		copyFail: 'Copy failed: ',
-		promptPrefix: 'Note: strings in the form %PXXX%S in the following text are placeholder aliases (e.g. %PPROJ_01%S, %PORG_ABC%S), representing masked real entities. Keep these aliases exactly as-is: do not translate, explain, rewrite, or guess their meaning; if you need to refer to them, keep using the same alias.'
+		promptPrefix: 'Note: strings in the form %PXXX%S in the following text are placeholder aliases (e.g. %PPROJ_01%S, %PORG_ABC%S), representing masked real entities. Keep these aliases exactly as-is: do not translate, explain, rewrite, or guess their meaning; if you need to refer to them, keep using the same alias.',
+		// category auto-alias (v1.6.0)
+		catTitle: 'Categories',
+		catAdd: 'Add category',
+		catNamePh: 'Name',
+		catPrefixPh: 'Prefix',
+		catPrefixDesc: 'Letters/digits only; must be globally unique. Changing a prefix keeps existing aliases unchanged; only new aliases use the new prefix.',
+		catNameErr: 'Name cannot be empty',
+		catPrefixErr: 'Prefix must be letters/digits only',
+		catPrefixDup: 'This prefix already exists',
+		catPrefixKept: 'Existing aliases keep their old prefix; only new ones use the new prefix.',
+		catDel: 'Delete category',
+		catDelBlock: 'Category "%n" still has %d mapping(s). Please reassign or delete them before removing this category.',
+		catFilterAll: 'All categories',
+		addCat: 'Category',
+		manualCode: 'Manual alias (optional)',
+		autoPreview: 'Will generate: %c',
+		needCat: 'Select a category or enter a manual alias',
+		noCat: 'Uncategorized',
+		allCats: 'All categories',
+		uncatNotice: 'Found %d uncategorized mapping(s). You can auto-categorize or keep them (decryption unaffected).',
+		smartCat: 'Auto-categorize',
+		smartCatDone: 'Categorized %d; %d unrecognized (set manually).',
+		ok: 'OK',
+		legendTitle: 'Alias legend (prefix = category):',
+		realName: 'Real name',
+		aliasName: 'Alias',
+		realPlaceholder: 'Real name',
+		codePlaceholder: 'Alias (letters/digits/_)',
+		pagerPrev: 'Prev',
+		pagerNext: 'Next',
+		catNotFound: 'Category not found',
+		batchPerLine: 'Per line: real|category',
+		batchCatDefault: 'Default category',
+		// preset category meanings (legend)
+		cat_platform: 'Platform',
+		cat_resource: 'Resource',
+		cat_person: 'Person',
+		cat_place: 'Place',
+		cat_dept1: 'Department L1',
+		cat_dept2: 'Department L2'
 	},
 	zh: {
 		title: 'AI Alias（保密代号）',
@@ -128,7 +197,7 @@ const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 		importBtn: '从剪贴板导入',
 		// CRUD manager
 		mappingTitle: '映射表',
-		searchPh: '搜索原文或代号…',
+		searchPh: '搜索原文 / 代号 / 类别…',
 		batchAdd: '批量添加',
 		delSel: '删除选中',
 		clearAll: '清空全部',
@@ -136,6 +205,7 @@ const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 		cancel: '取消',
 		thReal: '原文',
 		thCode: '代号',
+		thCat: '类别',
 		actions: '操作',
 		edit: '编辑',
 		del: '删除',
@@ -153,15 +223,15 @@ const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 		confirmClear: '确定清空全部 %d 条映射？此操作不可撤销。',
 		cancelClear: '已取消',
 		batchTitle: '批量添加映射',
-		batchFmt: '每行一条，格式：原文=代号（支持 = / → / 制表符 / 逗号）。空行忽略。',
+		batchFmt: '每行一条。「原文」→ 用默认类别自动出码；「原文|类别」→ 指定类别自动出码；「原文=代号」→ 手动代号（未分类）。空行忽略。',
 		batchSave: '添加',
 		previewWarn: '跳过：',
 		dupInBatch: '批量内重复',
 		importMergeOk: '已插入 %d 条新映射',
-		crudNote: '校验规则：原文与代号均不可为空；代号仅允许 A-Z a-z 0-9 _；代号全局唯一。提示：搜索实时筛选；点击表头排序；添加表单内按回车提交。',
+		crudNote: '提示：搜索实时筛选（原文/代号/类别）；用类别下拉筛选；点击表头排序；新增时按所选类别自动出码；每页 10 条分页。',
 		// import
 		importTitle: '导入映射表（粘贴 JSON）',
-		importFormat: '格式：{ "prefix":"[[", "suffix":"]]", "mappings":[{ "real":"...", "code":"PROJ_01" }] }。',
+		importFormat: '格式：{ "prefix":"[[", "suffix":"]]", "mappings":[{ "real":"...", "code":"PROJ_01", "category":"platform" }] }。',
 		overwriteBtn: '清空后插入',
 		mergeBtn: '插入',
 		importHelp: '插入：把导入的映射追加到现有列表，已有代号不会重复添加（保留你现有的条目）。清空后插入：先清空现有全部映射，再用导入内容替换（相当于整表重来）。',
@@ -197,12 +267,56 @@ const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 		bareTitleSkip: '已跳过 %d 条含非法文件名字符的标题还原',
 		prefixCopied: '已复制 AI 提示词前缀到剪贴板',
 		copyFail: '复制失败：',
-		promptPrefix: '注意：以下文本中的 %PXXX%S 形式字符串是占位代号（例如 %PPROJ_01%S、%PORG_ABC%S），代表被脱敏的真实实体。请严格原样保留这些代号，不要翻译、解释、改写或猜测其含义；若需提及，请继续使用同一代号。'
+		promptPrefix: '注意：以下文本中的 %PXXX%S 形式字符串是占位代号（例如 %PPROJ_01%S、%PORG_ABC%S），代表被脱敏的真实实体。请严格原样保留这些代号，不要翻译、解释、改写或猜测其含义；若需提及，请继续使用同一代号。',
+		// 分类自动代号 (v1.6.0)
+		catTitle: '类别',
+		catAdd: '新增类别',
+		catNamePh: '名称',
+		catPrefixPh: '前缀',
+		catPrefixDesc: '仅允许字母数字，全局唯一。修改前缀不影响已有代号，仅新生成代号使用新前缀。',
+		catNameErr: '名称不能为空',
+		catPrefixErr: '前缀仅允许字母数字',
+		catPrefixDup: '该前缀已存在',
+		catPrefixKept: '已有代号保持原前缀不变，仅新生成代号使用新前缀。',
+		catDel: '删除类别',
+		catDelBlock: '「%n」类别下还有 %d 条映射，请先将这些映射改到其他类别或删除数据后，再删除该类别。',
+		catFilterAll: '全部类别',
+		addCat: '类别',
+		manualCode: '手动指定代号（可选）',
+		autoPreview: '将生成：%c',
+		needCat: '请选择类别或填写手动代号',
+		noCat: '未分类',
+		allCats: '全部分类',
+		uncatNotice: '检测到 %d 条历史映射未分类，可一键智能补类别，或保持未分类（不影响解密）。',
+		smartCat: '智能补类别',
+		smartCatDone: '已归类 %d 条，%d 条无法识别，请手动处理。',
+		ok: '知道了',
+		legendTitle: '代号图例（前缀=类别）：',
+		realName: '原文',
+		aliasName: '代号',
+		realPlaceholder: '原文',
+		codePlaceholder: '代号（字母/数字/下划线）',
+		pagerPrev: '上一页',
+		pagerNext: '下一页',
+		catNotFound: '未找到该类别',
+		batchPerLine: '每行格式：原文|类别',
+		batchCatDefault: '默认类别',
+		// 预设类别含义（图例）
+		cat_platform: '平台',
+		cat_resource: '资源',
+		cat_person: '人名',
+		cat_place: '地点',
+		cat_dept1: '部门(一级)',
+		cat_dept2: '部门(二级)'
 	}
 };
 
 function isValidCode(code: string): boolean {
 	return /^[A-Za-z0-9_]+$/.test(code);
+}
+
+function escapeRegex(s: string): string {
+	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 // Lightweight confirm dialog built on Modal (avoids the deprecated browser confirm()).
@@ -211,20 +325,24 @@ class ConfirmDialog extends Modal {
 	confirmText: string;
 	cancelText: string;
 	onConfirm: () => void;
+	hideCancel: boolean;
 
-	constructor(app: App, message: string, confirmText: string, cancelText: string, onConfirm: () => void) {
+	constructor(app: App, message: string, confirmText: string, cancelText: string, onConfirm: () => void, hideCancel = false) {
 		super(app);
 		this.message = message;
 		this.confirmText = confirmText;
 		this.cancelText = cancelText;
 		this.onConfirm = onConfirm;
+		this.hideCancel = hideCancel;
 	}
 
 	onOpen(): void {
 		const { contentEl } = this;
 		contentEl.createEl('p', { text: this.message });
 		const foot = contentEl.createEl('div', { cls: 'ai-foot' });
-		foot.createEl('button', { text: this.cancelText }).addEventListener('click', () => this.close());
+		if (!this.hideCancel) {
+			foot.createEl('button', { text: this.cancelText }).addEventListener('click', () => this.close());
+		}
 		foot.createEl('button', { text: this.confirmText, cls: 'mod-cta' }).addEventListener('click', () => {
 			this.close();
 			this.onConfirm();
@@ -238,7 +356,9 @@ class BatchAddModal extends Modal {
 	taEl!: HTMLTextAreaElement;
 	previewEl!: HTMLElement;
 	saveBtn!: HTMLElement;
-	preview: { valid: Mapping[]; skipped: { line: string; reason: string }[] } | null = null;
+	perLineEl!: HTMLInputElement;
+	catSel!: HTMLSelectElement;
+	preview: { valid: { real: string; code: string; manual: boolean; category: string | null }[]; skipped: { line: string; reason: string }[] } | null = null;
 
 	constructor(app: App, plugin: AIAliasPlugin, tab: AIAliasSettingTab) {
 		super(app);
@@ -252,45 +372,85 @@ class BatchAddModal extends Modal {
 		this.titleEl.setText(t('batchTitle'));
 		contentEl.createEl('p', { cls: 'ai-sub', text: t('batchFmt') });
 		this.taEl = contentEl.createEl('textarea', { cls: 'ai-ta' });
+
+		const fPer = contentEl.createEl('div', { cls: 'ai-fld' });
+		const perLabel = fPer.createEl('label', { cls: 'ai-manual-label' });
+		this.perLineEl = perLabel.createEl('input', { type: 'checkbox' });
+		perLabel.createSpan({ text: ' ' + t('batchPerLine') });
+
+		const fCat = contentEl.createEl('div', { cls: 'ai-fld' });
+		fCat.createEl('label', { text: t('batchCatDefault') });
+		this.catSel = fCat.createEl('select', { cls: 'ai-cat-sel' });
+		const defId = this.plugin.settings.categories.length ? this.plugin.settings.categories[0].id : '';
+		this.tab.fillCatSelect(this.catSel, false, defId);
+
 		this.previewEl = contentEl.createEl('div', { cls: 'ai-preview' });
 		const foot = contentEl.createEl('div', { cls: 'ai-foot' });
 		foot.createEl('button', { text: t('cancel') }).addEventListener('click', () => this.close());
 		this.saveBtn = foot.createEl('button', { text: t('batchSave'), cls: 'mod-cta' });
 		this.saveBtn.addEventListener('click', () => this.doSave());
+
 		this.taEl.addEventListener('input', () => this.parse());
+		this.perLineEl.addEventListener('change', () => this.parse());
+		this.catSel.addEventListener('change', () => this.parse());
 		this.parse();
 	}
 
 	parse(): void {
 		const t = (k: string): string => this.plugin.t(k);
 		const raw = this.taEl.value.split(/\r?\n/);
-		const valid: Mapping[] = [];
+		const valid: { real: string; code: string; manual: boolean; category: string | null }[] = [];
 		const skipped: { line: string; reason: string }[] = [];
 		const seen = new Set<string>();
+		const perLine = this.perLineEl.checked;
+		const defCat = this.catSel.value;
 		for (const line of raw) {
 			const s = line.trim();
 			if (!s) continue;
-			const m = s.match(/^(.*?)\s*(?:=|→|,|\t)\s*(.+)$/);
-			if (!m) {
+			const mEq = s.match(/^(.*?)\s*(?:=|→|,|\t)\s*(.+)$/);
+			if (mEq) {
+				const real = mEq[1].trim();
+				const code = mEq[2].trim().toUpperCase();
+				if (!real || !code) {
+					skipped.push({ line: s, reason: t('errEmpty') });
+					continue;
+				}
+				if (!isValidCode(code)) {
+					skipped.push({ line: s, reason: t('errChars') });
+					continue;
+				}
+				if (seen.has(code) || this.plugin.settings.mappings.some((mm) => mm.code === code)) {
+					skipped.push({ line: s, reason: t('dupInBatch') });
+					continue;
+				}
+				seen.add(code);
+				valid.push({ real, code, manual: true, category: null });
+				continue;
+			}
+			let real = s;
+			let catId = defCat;
+			if (perLine && s.includes('|')) {
+				const parts = s.split('|');
+				real = parts[0].trim();
+				const cn = parts[1].trim();
+				const fc = this.plugin.resolveCategory(cn);
+				if (!fc) {
+					skipped.push({ line: s, reason: t('catNotFound') });
+					continue;
+				}
+				catId = fc.id;
+			}
+			if (!real) {
 				skipped.push({ line: s, reason: t('errEmpty') });
 				continue;
 			}
-			const real = m[1].trim();
-			const code = m[2].trim();
-			if (!real || !code) {
-				skipped.push({ line: s, reason: t('errEmpty') });
+			const cat = this.plugin.categoryById(catId);
+			if (!cat) {
+				skipped.push({ line: s, reason: t('needCat') });
 				continue;
 			}
-			if (!isValidCode(code)) {
-				skipped.push({ line: s, reason: t('errChars') });
-				continue;
-			}
-			if (seen.has(code) || this.plugin.settings.mappings.some((mm) => mm.code === code)) {
-				skipped.push({ line: s, reason: t('dupInBatch') });
-				continue;
-			}
-			seen.add(code);
-			valid.push({ real, code });
+			const code = this.plugin.generateCode(cat);
+			valid.push({ real, code, manual: false, category: cat.id });
 		}
 		this.preview = { valid, skipped };
 		this.previewEl.empty();
@@ -316,10 +476,13 @@ class BatchAddModal extends Modal {
 			this.close();
 			return;
 		}
-		this.plugin.settings.mappings.push(...this.preview.valid);
+		for (const v of this.preview.valid) {
+			this.plugin.settings.mappings.push({ real: v.real, code: v.code, category: v.category, manual: v.manual });
+		}
 		void this.plugin.save();
 		new Notice(this.plugin.t('addedN').replace('%d', String(this.preview.valid.length)));
 		this.tab.renderTable();
+		this.tab.renderUncatNotice();
 		this.close();
 	}
 
@@ -362,11 +525,13 @@ class ImportModal extends Modal {
 		for (const m of raw) {
 			const real = typeof m.real === 'string' ? m.real.trim() : '';
 			const code = typeof m.code === 'string' ? m.code.trim() : '';
+			const catRaw = typeof m.category === 'string' ? m.category : null;
+			const cat = catRaw && this.plugin.settings.categories.some((c) => c.id === catRaw) ? catRaw : null;
 			if (!real || !code) throw new Error(t('errEmptyField'));
 			if (!isValidCode(code)) throw new Error(t('errInvalid') + code);
 			if (seen.has(code)) throw new Error(t('errDuplicate') + code);
 			seen.add(code);
-			mappings.push({ real, code });
+			mappings.push({ real, code, category: cat, manual: false });
 		}
 		return {
 			prefix: typeof obj.prefix === 'string' ? obj.prefix : '',
@@ -403,6 +568,7 @@ class ImportModal extends Modal {
 				new Notice(t('imported').replace('%d', String(mappings.length)));
 			}
 			this.tab.renderTable();
+			this.tab.renderUncatNotice();
 			this.close();
 		} catch (e) {
 			new Notice(t('importFail') + (e instanceof Error ? e.message : String(e)));
@@ -631,15 +797,24 @@ class AIAliasSettingTab extends PluginSettingTab {
 	private selected = new Set<number>();
 	private editing: number | null = null;
 	private addOpen = false;
+	private page = 0;
+	private filterCat = FILTER_ALL;
 
 	// DOM refs
 	private searchEl!: HTMLInputElement;
 	private countEl!: HTMLElement;
 	private tableEl!: HTMLElement;
+	private pagerEl!: HTMLElement;
 	private addFormEl!: HTMLElement;
 	private addRealEl!: HTMLInputElement;
 	private addCodeEl!: HTMLInputElement;
+	private addCatEl!: HTMLSelectElement;
+	private addManualEl!: HTMLInputElement;
 	private addHintEl!: HTMLElement;
+	private filterSel!: HTMLSelectElement;
+	private catBarEl!: HTMLElement;
+	private uncatEl!: HTMLElement;
+	private delSelBtn!: HTMLElement;
 
 	constructor(app: App, plugin: AIAliasPlugin) {
 		super(app, plugin);
@@ -706,7 +881,13 @@ class AIAliasSettingTab extends PluginSettingTab {
 				btn.setButtonText(t('importBtn')).onClick(() => new ImportModal(this.app, this.plugin, this).open())
 			);
 
-		// ---- Mapping manager ----
+		// ---- Category manager (lightweight) ----
+		new Setting(containerEl).setName(t('catTitle')).setHeading();
+		this.catBarEl = containerEl.createEl('div', { cls: 'ai-catbar' });
+		this.uncatEl = containerEl.createEl('div', { cls: 'ai-uncat is-hidden' });
+		containerEl.createEl('div', { cls: 'ai-note', text: t('catPrefixDesc') });
+
+		// ---- Mapping manager (main view) ----
 		new Setting(containerEl).setName(t('mappingTitle')).setHeading();
 
 		const toolbar = containerEl.createEl('div', { cls: 'ai-toolbar' });
@@ -715,6 +896,14 @@ class AIAliasSettingTab extends PluginSettingTab {
 		this.searchEl.value = this.searchTerm;
 		this.searchEl.addEventListener('input', (e) => {
 			this.searchTerm = (e.target as HTMLInputElement).value;
+			this.page = 0;
+			this.renderTable();
+		});
+		this.filterSel = toolbar.createEl('select', { cls: 'ai-catfilter' });
+		this.fillCatSelect(this.filterSel, true, this.filterCat, true);
+		this.filterSel.addEventListener('change', () => {
+			this.filterCat = this.filterSel.value;
+			this.page = 0;
 			this.renderTable();
 		});
 		this.countEl = toolbar.createEl('span', { cls: 'ai-count' });
@@ -724,8 +913,8 @@ class AIAliasSettingTab extends PluginSettingTab {
 		addB.addEventListener('click', () => this.toggleAddForm());
 		const batchB = btnBar.createEl('button', { text: t('batchAdd') });
 		batchB.addEventListener('click', () => new BatchAddModal(this.app, this.plugin, this).open());
-		const delSelB = btnBar.createEl('button', { text: t('delSel'), cls: 'mod-warning' });
-		delSelB.addEventListener('click', () => this.deleteSelected());
+		this.delSelBtn = btnBar.createEl('button', { text: t('delSel'), cls: 'mod-warning' });
+		this.delSelBtn.addEventListener('click', () => this.deleteSelected());
 		const clearB = btnBar.createEl('button', { text: t('clearAll'), cls: 'mod-warning' });
 		clearB.addEventListener('click', () => this.clearAll());
 
@@ -736,17 +925,28 @@ class AIAliasSettingTab extends PluginSettingTab {
 		this.addRealEl.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter') {
 				e.preventDefault();
-				this.addCodeEl.focus();
+				this.addCatEl.focus();
 			}
 		});
-		const f2 = this.addFormEl.createEl('div', { cls: 'ai-fld' });
-		f2.createEl('label', { text: t('aliasName') });
-		this.addCodeEl = f2.createEl('input', { type: 'text', placeholder: t('codePlaceholder') });
+		const fCat = this.addFormEl.createEl('div', { cls: 'ai-fld' });
+		fCat.createEl('label', { text: t('addCat') });
+		this.addCatEl = fCat.createEl('select', { cls: 'ai-cat-sel' });
+		this.fillCatSelect(this.addCatEl, true, this.plugin.settings.categories[0]?.id ?? FILTER_UNCAT);
+		this.addCatEl.addEventListener('change', () => this.updateAutoPreview());
+		const fMan = this.addFormEl.createEl('div', { cls: 'ai-fld' });
+		const manLabel = fMan.createEl('label', { cls: 'ai-manual-label' });
+		this.addManualEl = manLabel.createEl('input', { type: 'checkbox' });
+		manLabel.createSpan({ text: ' ' + t('manualCode') });
+		this.addCodeEl = fMan.createEl('input', { type: 'text', placeholder: t('codePlaceholder'), cls: 'ai-code-in is-hidden' });
 		this.addCodeEl.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter') {
 				e.preventDefault();
 				this.saveInlineAdd();
 			}
+		});
+		this.addManualEl.addEventListener('change', () => {
+			this.addCodeEl.toggleClass('is-hidden', !this.addManualEl.checked);
+			this.updateAutoPreview();
 		});
 		const f3 = this.addFormEl.createEl('div', { cls: 'ai-fld' });
 		f3.createEl('label', { text: ' ' });
@@ -757,11 +957,181 @@ class AIAliasSettingTab extends PluginSettingTab {
 		this.addHintEl = this.addFormEl.createEl('div', { cls: 'ai-hint' });
 
 		this.tableEl = containerEl.createEl('div', { cls: 'ai-table' });
+		this.pagerEl = containerEl.createEl('div', { cls: 'ai-pager' });
 
 		containerEl.createEl('div', { cls: 'ai-note', text: t('crudNote') });
 
+		this.renderCategoryBar();
+		this.renderUncatNotice();
 		this.renderTable();
 	}
+
+	// ---------- category manager ----------
+
+	fillCatSelect(sel: HTMLSelectElement, includeUncat: boolean, selectedId: string, includeAll = false): void {
+		const t = (k: string): string => this.plugin.t(k);
+		sel.empty();
+		if (includeAll) {
+			const o = sel.createEl('option');
+			o.textContent = t('allCats');
+			o.value = FILTER_ALL;
+			sel.appendChild(o);
+		}
+		if (includeUncat) {
+			const o = sel.createEl('option');
+			o.textContent = t('noCat');
+			o.value = FILTER_UNCAT;
+			sel.appendChild(o);
+		}
+		for (const c of this.plugin.settings.categories) {
+			const o = sel.createEl('option');
+			o.textContent = c.name + ' (' + c.prefix + ')';
+			o.value = c.id;
+			sel.appendChild(o);
+		}
+		const vals = Array.from(sel.options).map((o) => o.value);
+		sel.value = vals.includes(selectedId) ? selectedId : includeAll ? FILTER_ALL : (this.plugin.settings.categories[0]?.id ?? FILTER_UNCAT);
+	}
+
+	private normCat(v: string): string | null {
+		return v === FILTER_UNCAT || v === FILTER_ALL || !v ? null : v;
+	}
+
+	private renderCategoryBar(): void {
+		if (!this.catBarEl) return;
+		const t = (k: string): string => this.plugin.t(k);
+		this.catBarEl.empty();
+		const chips = this.catBarEl.createEl('div', { cls: 'ai-chips' });
+		for (const c of this.plugin.settings.categories) {
+			const chip = chips.createEl('div', { cls: 'ai-chip' });
+			const nameIn = chip.createEl('input', { type: 'text', value: c.name, cls: 'ai-chip-name' });
+			nameIn.addEventListener('change', () => {
+				const v = nameIn.value.trim();
+				if (!v) {
+					nameIn.value = c.name;
+					return;
+				}
+				c.name = v;
+				void this.plugin.save();
+				this.refreshFilterOptions();
+			});
+			const preIn = chip.createEl('input', { type: 'text', value: c.prefix, cls: 'ai-chip-prefix' });
+			preIn.addEventListener('change', () => this.onPrefixChange(c, preIn));
+			const del = chip.createEl('button', { cls: 'ai-chip-del' });
+			setIcon(del, 'x');
+			del.setAttribute('aria-label', t('catDel'));
+			del.addEventListener('click', () => this.deleteCategory(c));
+		}
+		const addRow = this.catBarEl.createEl('div', { cls: 'ai-addcat' });
+		const nIn = addRow.createEl('input', { type: 'text', placeholder: t('catNamePh') });
+		const pIn = addRow.createEl('input', { type: 'text', placeholder: t('catPrefixPh') });
+		const addBtn = addRow.createEl('button', { text: '+ ' + t('catAdd'), cls: 'mod-cta' });
+		addBtn.addEventListener('click', () => this.addCategory(nIn, pIn));
+	}
+
+	private onPrefixChange(c: Category, inp: HTMLInputElement): void {
+		const t = (k: string): string => this.plugin.t(k);
+		const v = inp.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+		if (!v) {
+			inp.value = c.prefix;
+			return;
+		}
+		if (this.plugin.settings.categories.some((x) => x.id !== c.id && x.prefix === v)) {
+			new Notice(t('catPrefixDup'));
+			inp.value = c.prefix;
+			return;
+		}
+		c.prefix = v;
+		inp.value = v;
+		void this.plugin.save();
+		new Notice(t('catPrefixKept'));
+		this.renderTable();
+	}
+
+	private addCategory(nIn: HTMLInputElement, pIn: HTMLInputElement): void {
+		const t = (k: string): string => this.plugin.t(k);
+		const name = nIn.value.trim();
+		let prefix = pIn.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+		if (!name) {
+			new Notice(t('catNameErr'));
+			return;
+		}
+		if (!prefix) prefix = name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+		if (!prefix) {
+			new Notice(t('catPrefixErr'));
+			return;
+		}
+		if (this.plugin.settings.categories.some((cc) => cc.prefix === prefix)) {
+			new Notice(t('catPrefixDup'));
+			return;
+		}
+		this.plugin.settings.categories.push({ id: 'cat_' + Date.now().toString(36), name, prefix, seq: 0 });
+		void this.plugin.save();
+		nIn.value = '';
+		pIn.value = '';
+		this.renderCategoryBar();
+		this.refreshFilterOptions();
+		this.renderTable();
+	}
+
+	private deleteCategory(c: Category): void {
+		const t = (k: string): string => this.plugin.t(k);
+		const n = this.plugin.settings.mappings.filter((m) => m.category === c.id).length;
+		if (n > 0) {
+			new ConfirmDialog(
+				this.app,
+				t('catDelBlock').replace('%n', c.name).replace('%d', String(n)),
+				t('ok'),
+				'',
+				() => {},
+				true
+			).open();
+			return;
+		}
+		this.plugin.settings.categories = this.plugin.settings.categories.filter((x) => x.id !== c.id);
+		void this.plugin.save();
+		this.renderCategoryBar();
+		this.refreshFilterOptions();
+		this.renderTable();
+	}
+
+	private refreshFilterOptions(): void {
+		if (!this.filterSel) return;
+		const cur = this.filterSel.value;
+		this.fillCatSelect(this.filterSel, true, cur, true);
+	}
+
+	// ---------- uncategorized notice ----------
+
+	renderUncatNotice(): void {
+		if (!this.uncatEl) return;
+		const t = (k: string): string => this.plugin.t(k);
+		const n = this.plugin.settings.mappings.filter((m) => m.category == null).length;
+		this.uncatEl.empty();
+		if (n === 0) {
+			this.uncatEl.toggleClass('is-hidden', true);
+			return;
+		}
+		this.uncatEl.toggleClass('is-hidden', false);
+		this.uncatEl.createEl('span', { text: t('uncatNotice').replace('%d', String(n)) });
+		const btn = this.uncatEl.createEl('button', { text: t('smartCat'), cls: 'mod-cta' });
+		btn.addEventListener('click', () => this.smartCategorize());
+	}
+
+	private smartCategorize(): void {
+		const r = this.plugin.categorizeSmart();
+		void this.plugin.save();
+		new Notice(
+			this.plugin
+				.t('smartCatDone')
+				.replace('%d', String(r.done))
+				.replace('%t', String(r.remain))
+		);
+		this.renderUncatNotice();
+		this.renderTable();
+	}
+
+	// ---------- mapping table ----------
 
 	private toggleAddForm(forceClose = false): void {
 		this.addOpen = forceClose ? false : !this.addOpen;
@@ -769,23 +1139,61 @@ class AIAliasSettingTab extends PluginSettingTab {
 		this.addHintEl.setText('');
 		if (this.addOpen) {
 			this.addRealEl.focus();
+			this.updateAutoPreview();
 		} else {
 			this.addRealEl.value = '';
 			this.addCodeEl.value = '';
+			this.addManualEl.checked = false;
+			this.addCodeEl.toggleClass('is-hidden', true);
+			this.addCatEl.value = this.plugin.settings.categories[0]?.id ?? FILTER_UNCAT;
+			this.updateAutoPreview();
 		}
 	}
 
-	private filteredMappings(): { real: string; code: string; i: number }[] {
-		let list = this.plugin.settings.mappings.map((m, i) => ({ ...m, i }));
+	private updateAutoPreview(): void {
+		const t = (k: string): string => this.plugin.t(k);
+		const cat = this.plugin.categoryById(this.addCatEl.value);
+		if (cat && !this.addManualEl.checked) {
+			const preview = cat.prefix + String(cat.seq + 1).padStart(3, '0');
+			this.addHintEl.setText(t('autoPreview').replace('%c', this.plugin.wrap(preview)));
+			this.addHintEl.className = 'ai-hint';
+		} else if (this.addManualEl.checked) {
+			this.addHintEl.setText('');
+		} else {
+			this.addHintEl.setText(t('needCat'));
+			this.addHintEl.className = 'ai-hint ai-err';
+		}
+	}
+
+	private filteredMappings(): { real: string; code: string; category?: string | null; manual?: boolean; i: number }[] {
+		let list = this.plugin.settings.mappings.map((m, i) => ({
+			real: m.real,
+			code: m.code,
+			category: m.category,
+			manual: m.manual,
+			i
+		}));
 		const q = this.searchTerm.trim().toLowerCase();
 		if (q) {
-			list = list.filter((m) => m.real.toLowerCase().includes(q) || m.code.toLowerCase().includes(q));
+			list = list.filter((m) => {
+				const cat = this.plugin.categoryById(m.category);
+				return (
+					m.real.toLowerCase().includes(q) ||
+					m.code.toLowerCase().includes(q) ||
+					(!!cat && cat.name.toLowerCase().includes(q))
+				);
+			});
+		}
+		if (this.filterCat === FILTER_UNCAT) {
+			list = list.filter((m) => !m.category);
+		} else if (this.filterCat && this.filterCat !== FILTER_ALL) {
+			list = list.filter((m) => (m.category || '') === this.filterCat);
 		}
 		if (this.sortKey) {
 			const key = this.sortKey;
 			list.sort((a, b) => {
-				const va = a[key].toLowerCase();
-				const vb = b[key].toLowerCase();
+				const va = (a[key] || '').toLowerCase();
+				const vb = (b[key] || '').toLowerCase();
 				return va < vb ? -1 * this.sortDir : va > vb ? 1 * this.sortDir : 0;
 			});
 		}
@@ -797,26 +1205,19 @@ class AIAliasSettingTab extends PluginSettingTab {
 		const tableEl = this.tableEl;
 		tableEl.empty();
 		const list = this.filteredMappings();
+		const pages = Math.max(1, Math.ceil(list.length / PAGE));
+		if (this.page >= pages) this.page = pages - 1;
+		if (this.page < 0) this.page = 0;
 		this.countEl.setText(`共 ${this.plugin.settings.mappings.length} 条 · 显示 ${list.length} 条`);
 
 		const table = tableEl.createEl('table', { cls: 'ai-alias-tbl' });
 		const thead = table.createEl('thead');
 		const htr = thead.createEl('tr');
-		const thCb = htr.createEl('th');
-		const selAll = thCb.createEl('input', { type: 'checkbox' });
-		selAll.addEventListener('change', (e) => {
-			const checked = (e.target as HTMLInputElement).checked;
-			if (checked) list.forEach((m) => this.selected.add(m.i));
-			else this.selected.clear();
-			this.renderTable();
-		});
-		const thReal = htr.createEl('th', {
-			text: t('thReal') + (this.sortKey === 'real' ? (this.sortDir > 0 ? ' ▲' : ' ▼') : '')
-		});
+		htr.createEl('th', { text: '' });
+		const thReal = htr.createEl('th', { text: t('thReal') + this.sortIndicator('real') });
 		thReal.addEventListener('click', () => this.toggleSort('real'));
-		const thCode = htr.createEl('th', {
-			text: t('thCode') + (this.sortKey === 'code' ? (this.sortDir > 0 ? ' ▲' : ' ▼') : '')
-		});
+		const thCat = htr.createEl('th', { text: t('thCat') });
+		const thCode = htr.createEl('th', { text: t('thCode') + this.sortIndicator('code') });
 		thCode.addEventListener('click', () => this.toggleSort('code'));
 		thCode.addClass('ai-right');
 		htr.createEl('th', { text: t('actions') }).addClass('ai-right');
@@ -825,40 +1226,51 @@ class AIAliasSettingTab extends PluginSettingTab {
 		if (this.plugin.settings.mappings.length === 0) {
 			const tr = tbody.createEl('tr');
 			const td = tr.createEl('td', { text: t('empty') });
-			td.setAttribute('colspan', '4');
+			td.setAttribute('colspan', '5');
 			td.addClass('ai-empty');
+			this.renderPager(pages);
 			return;
 		}
-		if (list.length === 0) {
+		const start = this.page * PAGE;
+		const items = list.slice(start, start + PAGE);
+		if (items.length === 0) {
 			const tr = tbody.createEl('tr');
 			const td = tr.createEl('td', { text: t('filteredEmpty') });
-			td.setAttribute('colspan', '4');
+			td.setAttribute('colspan', '5');
 			td.addClass('ai-empty');
+			this.renderPager(pages);
 			return;
 		}
-		for (const m of list) {
+		for (const m of items) {
 			const tr = tbody.createEl('tr');
 			if (this.selected.has(m.i)) tr.addClass('ai-sel');
 			const tdCb = tr.createEl('td');
-			const cb = tdCb.createEl('input', { type: 'checkbox' });
-			cb.checked = this.selected.has(m.i);
-			cb.addEventListener('change', (e) => {
-				const checked = (e.target as HTMLInputElement).checked;
-				if (checked) this.selected.add(m.i);
-				else this.selected.delete(m.i);
-				tr.toggleClass('ai-sel', checked);
-			});
+			if (this.editing === m.i) {
+				// leave checkbox cell empty while editing
+			} else {
+				const cb = tdCb.createEl('input', { type: 'checkbox' });
+				cb.checked = this.selected.has(m.i);
+				cb.addEventListener('change', (e) => {
+					const checked = (e.target as HTMLInputElement).checked;
+					if (checked) this.selected.add(m.i);
+					else this.selected.delete(m.i);
+					tr.toggleClass('ai-sel', checked);
+					this.updateBulk();
+				});
+			}
 			if (this.editing === m.i) {
 				const tdR = tr.createEl('td');
 				const inR = tdR.createEl('input', { type: 'text', cls: 'ai-edit-in' });
 				inR.value = m.real;
+				const tdCat = tr.createEl('td');
+				const sel = tdCat.createEl('select', { cls: 'ai-cat-sel' });
+				this.fillCatSelect(sel, true, m.category || FILTER_UNCAT);
 				const tdC = tr.createEl('td');
-				const inC = tdC.createEl('input', { type: 'text', cls: 'ai-edit-in' });
-				inC.value = m.code;
+				tdC.createEl('span', { text: this.plugin.wrap(m.code), cls: 'ai-code' });
 				const tdA = tr.createEl('td');
 				tdA.addClass('ai-right');
 				tdA.createEl('button', { text: t('addSave'), cls: 'mod-cta' }).addEventListener('click', () =>
-					this.saveEdit(m.i, inR.value, inC.value)
+					this.saveEdit(m.i, inR.value, sel.value)
 				);
 				tdA.createEl('button', { text: t('cancel') }).addEventListener('click', () => {
 					this.editing = null;
@@ -866,6 +1278,8 @@ class AIAliasSettingTab extends PluginSettingTab {
 				});
 			} else {
 				tr.createEl('td', { text: m.real });
+				const cat = this.plugin.categoryById(m.category);
+				tr.createEl('td', { text: cat ? cat.name : t('noCat') });
 				const tdC = tr.createEl('td', { text: this.plugin.wrap(m.code) });
 				tdC.addClass('ai-code');
 				const tdA = tr.createEl('td');
@@ -880,6 +1294,44 @@ class AIAliasSettingTab extends PluginSettingTab {
 				);
 			}
 		}
+		this.renderPager(pages);
+	}
+
+	private sortIndicator(key: 'real' | 'code'): string {
+		if (this.sortKey !== key) return '';
+		return this.sortDir > 0 ? ' ▲' : ' ▼';
+	}
+
+	private renderPager(pages: number): void {
+		const t = (k: string): string => this.plugin.t(k);
+		this.pagerEl.empty();
+		if (pages <= 1) return;
+		const prev = this.pagerEl.createEl('button', { text: t('pagerPrev') });
+		prev.addEventListener('click', () => {
+			if (this.page > 0) {
+				this.page--;
+				this.renderTable();
+			}
+		});
+		for (let i = 0; i < pages; i++) {
+			const b = this.pagerEl.createEl('button', { text: String(i + 1) });
+			if (i === this.page) b.addClass('mod-cta');
+			b.addEventListener('click', () => {
+				this.page = i;
+				this.renderTable();
+			});
+		}
+		const next = this.pagerEl.createEl('button', { text: t('pagerNext') });
+		next.addEventListener('click', () => {
+			if (this.page < pages - 1) {
+				this.page++;
+				this.renderTable();
+			}
+		});
+	}
+
+	private updateBulk(): void {
+		if (this.delSelBtn) this.delSelBtn.setText(this.plugin.t('delSel') + ' (' + this.selected.size + ')');
 	}
 
 	private toggleSort(k: 'real' | 'code'): void {
@@ -891,52 +1343,74 @@ class AIAliasSettingTab extends PluginSettingTab {
 		this.renderTable();
 	}
 
+	private hint(msg: string): void {
+		this.addHintEl.setText(msg);
+		this.addHintEl.className = 'ai-hint ai-err';
+	}
+
 	private saveInlineAdd(): void {
 		const t = (k: string): string => this.plugin.t(k);
 		const real = this.addRealEl.value.trim();
-		const code = this.addCodeEl.value.trim();
-		if (!real || !code) {
-			this.addHintEl.setText(t('errEmpty'));
-			this.addHintEl.className = 'ai-hint ai-err';
+		const catId = this.addCatEl.value;
+		const manual = this.addManualEl.checked;
+		const codeVal = this.addCodeEl.value.trim().toUpperCase();
+		if (!real) {
+			this.hint(t('errEmpty'));
 			return;
 		}
-		if (!isValidCode(code)) {
-			this.addHintEl.setText(t('errChars'));
-			this.addHintEl.className = 'ai-hint ai-err';
-			return;
+		if (manual) {
+			if (!isValidCode(codeVal)) {
+				this.hint(t('errChars'));
+				return;
+			}
+			if (this.plugin.settings.mappings.some((m) => m.code === codeVal)) {
+				this.hint(t('errDup'));
+				return;
+			}
+			this.plugin.settings.mappings.push({ real, code: codeVal, category: this.normCat(catId), manual: true });
+			void this.plugin.save();
+			this.afterAdd(codeVal);
+		} else {
+			const cat = this.plugin.categoryById(catId);
+			if (!cat) {
+				this.hint(t('needCat'));
+				return;
+			}
+			const code = this.plugin.generateCode(cat);
+			this.plugin.settings.mappings.push({ real, code, category: cat.id, manual: false });
+			void this.plugin.save();
+			this.afterAdd(code);
 		}
-		if (this.plugin.settings.mappings.some((m) => m.code === code)) {
-			this.addHintEl.setText(t('errDup'));
-			this.addHintEl.className = 'ai-hint ai-err';
-			return;
-		}
-		this.plugin.settings.mappings.push({ real, code });
-		void this.plugin.save();
-		this.addHintEl.setText(t('added') + this.plugin.wrap(code));
-		this.addHintEl.className = 'ai-hint ai-ok';
-		this.addRealEl.value = '';
-		this.addCodeEl.value = '';
-		this.addRealEl.focus();
-		this.renderTable();
 	}
 
-	private saveEdit(i: number, realRaw: string, codeRaw: string): void {
+	private afterAdd(code: string): void {
+		this.plugin.t('added');
+		new Notice(this.plugin.t('added') + this.plugin.wrap(code));
+		this.addRealEl.value = '';
+		this.addCodeEl.value = '';
+		this.addManualEl.checked = false;
+		this.addCodeEl.toggleClass('is-hidden', true);
+		this.addCatEl.value = '';
+		this.updateAutoPreview();
+		this.renderTable();
+		this.renderUncatNotice();
+	}
+
+	private saveEdit(i: number, realRaw: string, catId: string): void {
 		const t = (k: string): string => this.plugin.t(k);
 		const real = realRaw.trim();
-		const code = codeRaw.trim();
-		if (!real || !code) {
+		if (!real) {
 			new Notice(t('errEmpty'));
 			return;
 		}
-		if (!isValidCode(code)) {
-			new Notice(t('errChars'));
-			return;
+		const old = this.plugin.settings.mappings[i];
+		let code = old.code;
+		const manual = !!old.manual;
+		if (!manual && catId !== (old.category || '')) {
+			const cat = this.plugin.categoryById(catId);
+			if (cat) code = this.plugin.generateCode(cat);
 		}
-		if (this.plugin.settings.mappings.some((m, j) => j !== i && m.code === code)) {
-			new Notice(t('errDup'));
-			return;
-		}
-		this.plugin.settings.mappings[i] = { real, code };
+		this.plugin.settings.mappings[i] = { real, code, category: this.normCat(catId), manual };
 		this.editing = null;
 		void this.plugin.save();
 		new Notice(t('edited'));
@@ -953,6 +1427,7 @@ class AIAliasSettingTab extends PluginSettingTab {
 		void this.plugin.save();
 		new Notice(this.plugin.t('delOne'));
 		this.renderTable();
+		this.renderUncatNotice();
 	}
 
 	private deleteSelected(): void {
@@ -973,6 +1448,7 @@ class AIAliasSettingTab extends PluginSettingTab {
 				void this.plugin.save();
 				new Notice(this.plugin.t('delN').replace('%d', String(n)));
 				this.renderTable();
+				this.renderUncatNotice();
 			}
 		).open();
 	}
@@ -992,6 +1468,7 @@ class AIAliasSettingTab extends PluginSettingTab {
 				void this.plugin.save();
 				new Notice(this.plugin.t('delN').replace('%d', String(n)));
 				this.renderTable();
+				this.renderUncatNotice();
 			}
 		).open();
 	}
@@ -1004,6 +1481,96 @@ export default class AIAliasPlugin extends Plugin {
 	t(key: string): string {
 		const lang = this.settings.language || 'en';
 		return STR[lang] && STR[lang][key] !== undefined ? STR[lang][key] : STR.en[key];
+	}
+
+	defaultCategories(): Category[] {
+		const lang = this.settings.language === 'zh' ? 'zh' : 'en';
+		return PRESET_DEFS.map((d) => ({
+			id: d.key,
+			key: d.key,
+			name: d[lang],
+			prefix: d.prefix,
+			seq: 0
+		}));
+	}
+
+	categoryById(id: string | null | undefined): Category | undefined {
+		if (!id) return undefined;
+		return this.settings.categories.find((c) => c.id === id);
+	}
+
+	categoryMeaning(cat: Category): string {
+		if (cat.key) {
+			const v = this.t('cat_' + cat.key);
+			if (v) return v;
+		}
+		return cat.name;
+	}
+
+	resolveCategory(token: string): Category | undefined {
+		const t = token.trim().toLowerCase();
+		if (!t) return undefined;
+		return this.settings.categories.find(
+			(c) => c.name.toLowerCase() === t || c.prefix.toLowerCase() === t || (c.key && c.key.toLowerCase() === t)
+		);
+	}
+
+	generateCode(cat: Category): string {
+		const existing = new Set(this.settings.mappings.map((m) => m.code));
+		let seq = cat.seq;
+		let code: string;
+		do {
+			seq += 1;
+			code = cat.prefix + String(seq).padStart(3, '0');
+		} while (existing.has(code));
+		cat.seq = seq;
+		return code;
+	}
+
+	bumpCategorySeqs(): void {
+		for (const cat of this.settings.categories) {
+			const re = new RegExp('^' + escapeRegex(cat.prefix) + '(\\d+)$');
+			let max = 0;
+			for (const m of this.settings.mappings) {
+				const mm = m.code.match(re);
+				if (mm) {
+					const n = parseInt(mm[1], 10);
+					if (n > max) max = n;
+				}
+			}
+			if (max > cat.seq) cat.seq = max;
+		}
+	}
+
+	categorizeSmart(): { done: number; remain: number } {
+		let done = 0;
+		for (const m of this.settings.mappings) {
+			if (m.category != null) continue;
+			const re = new RegExp(
+				'^(' +
+					this.settings.categories.map((c) => '(' + escapeRegex(c.prefix) + ')').join('|') +
+					')(\\d+)$'
+			);
+			const mm = m.code.match(re);
+			if (mm) {
+				const cat = this.settings.categories.find((c) => c.prefix === mm[1]);
+				if (cat) {
+					m.category = cat.id;
+					const n = parseInt(mm[2], 10);
+					if (n > cat.seq) cat.seq = n;
+					done++;
+				}
+			}
+		}
+		return { done, remain: this.settings.mappings.filter((m) => m.category == null).length };
+	}
+
+	buildLegend(): string {
+		const lines = ['# ' + this.t('legendTitle')];
+		for (const cat of this.settings.categories) {
+			lines.push('# ' + cat.prefix + ' = ' + this.categoryMeaning(cat));
+		}
+		return lines.join('\n');
 	}
 
 	async onload(): Promise<void> {
@@ -1047,7 +1614,8 @@ export default class AIAliasPlugin extends Plugin {
 			callback: () => {
 				const p = this.settings.prefix;
 				const s = this.settings.suffix;
-				const text = this.t('promptPrefix').split('%P').join(p).split('%S').join(s);
+				const text =
+					this.t('promptPrefix').split('%P').join(p).split('%S').join(s) + '\n\n' + this.buildLegend();
 				void navigator.clipboard
 					.writeText(text)
 					.then(() => new Notice(this.t('prefixCopied')))
@@ -1159,6 +1727,30 @@ export default class AIAliasPlugin extends Plugin {
 		const data = (await this.loadData()) as Partial<AIAliasSettings> | null;
 		this.settings = Object.assign({}, DEFAULT_SETTINGS, data ?? {});
 		if (!Array.isArray(this.settings.mappings)) this.settings.mappings = [];
+		if (!Array.isArray(this.settings.categories)) this.settings.categories = [];
 		if (this.settings.language !== 'zh') this.settings.language = 'en';
+
+		// ---- v1.6.0 migration (idempotent) ----
+		let migrated = false;
+		if (this.settings.categories.length === 0 && this.settings.schemaVersion !== SCHEMA_VERSION) {
+			this.settings.categories = this.defaultCategories();
+			migrated = true;
+		}
+		for (const m of this.settings.mappings) {
+			if (m.category === undefined) m.category = null;
+			if (m.manual === undefined) m.manual = false;
+		}
+		this.bumpCategorySeqs();
+		if (migrated) {
+			this.settings.schemaVersion = SCHEMA_VERSION;
+			await this.save();
+		}
 	}
+}
+
+interface BareHit {
+	start: number;
+	end: number;
+	code: string;
+	real: string;
 }

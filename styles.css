@@ -239,3 +239,132 @@
 	color: var(--text-error);
 	font-weight: 700;
 }
+
+/* ---- category manager (v1.6.0) ---- */
+.ai-catbar {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+.ai-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+}
+.ai-chip {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 16px;
+	padding: 3px 6px 3px 10px;
+	font-size: 0.82em;
+}
+.ai-chip-name {
+	width: 84px;
+	border: none;
+	background: transparent;
+	padding: 2px 3px;
+	font-size: 1em;
+	color: var(--text-normal);
+}
+.ai-chip-name:focus {
+	outline: 1px solid var(--interactive-accent);
+	border-radius: 4px;
+}
+.ai-chip-prefix {
+	width: 92px;
+	padding: 2px 5px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	font-family: var(--font-monospace);
+	text-transform: uppercase;
+	font-size: 0.95em;
+	background: var(--background-primary);
+	color: var(--text-normal);
+}
+.ai-chip-del {
+	margin-left: 2px;
+	padding: 2px;
+	background: transparent;
+	border: none;
+	color: var(--text-muted);
+	cursor: pointer;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	line-height: 0;
+	border-radius: 4px;
+}
+.ai-chip-del:hover {
+	color: var(--text-error);
+}
+.ai-addcat {
+	display: flex;
+	gap: 8px;
+	flex-wrap: wrap;
+	align-items: center;
+	margin-top: 2px;
+}
+.ai-addcat input {
+	padding: 4px 8px;
+	font-size: 0.82em;
+	width: 120px;
+}
+.ai-uncat {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	flex-wrap: wrap;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-left: 3px solid var(--interactive-accent);
+	border-radius: 6px;
+	padding: 8px 12px;
+	font-size: 0.85em;
+	color: var(--text-muted);
+	margin: 4px 0 0;
+}
+.ai-uncat.is-hidden {
+	display: none;
+}
+.ai-catfilter {
+	padding: 7px 10px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	font-size: 0.9em;
+	min-width: 130px;
+	background: var(--background-primary);
+	color: var(--text-normal);
+}
+.ai-cat-sel {
+	padding: 5px 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	font-size: 0.9em;
+	background: var(--background-primary);
+	color: var(--text-normal);
+}
+.ai-code-in {
+	width: 100%;
+	min-width: 120px;
+}
+.ai-manual-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 0.85em;
+	color: var(--text-muted);
+}
+.ai-pager {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+	margin-top: 12px;
+}
+.ai-pager button {
+	padding: 4px 10px;
+	font-size: 0.82em;
+}
