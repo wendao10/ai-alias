@@ -1,4 +1,18 @@
-import { Plugin, PluginSettingTab, Setting, Notice, Modal, Editor, App, TFile, setIcon } from 'obsidian';
+import {
+	Plugin,
+	PluginSettingTab,
+	Setting,
+	Notice,
+	Modal,
+	Editor,
+	App,
+	TFile,
+	TFolder,
+	TAbstractFile,
+	Menu,
+	Vault,
+	setIcon
+} from 'obsidian';
 
 interface Category {
 	id: string;
@@ -22,18 +36,36 @@ interface AIAliasSettings {
 	mappings: Mapping[];
 	categories: Category[];
 	schemaVersion?: number;
+	// ---- v1.7.0 batch operations ----
+	batchIncludeSubfolders: boolean;
+	batchBareCodePolicy: 'skip' | 'confirmAll';
+	batchRenameTitles: boolean;
+	batchSkipFrontmatter: boolean;
+	batchBackupEnabled: boolean;
+	batchBackupKeep: number;
 }
 
 const SCHEMA_VERSION = 2;
 const FILTER_ALL = '__all__';
 const FILTER_UNCAT = '__uncat__';
 
+// batch tuning
+const BATCH_YIELD = 20; // files scanned between main-thread yields
+const BATCH_MANY = 100; // above this many changed files the warning turns red + needs a second confirm
+const SNAPSHOT_VERSION = 1;
+
 const DEFAULT_SETTINGS: AIAliasSettings = {
 	prefix: '[[',
 	suffix: ']]',
 	language: 'en',
 	mappings: [],
-	categories: []
+	categories: [],
+	batchIncludeSubfolders: true,
+	batchBareCodePolicy: 'confirmAll',
+	batchRenameTitles: false,
+	batchSkipFrontmatter: true,
+	batchBackupEnabled: true,
+	batchBackupKeep: 5
 };
 
 interface PresetDef {
@@ -115,9 +147,9 @@ const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 		imported: 'Cleared and inserted %d entries',
 		importFail: 'Import failed: ',
 		// commands
-		cmdEncrypt: 'AI Alias: Convert real names to aliases (selection or whole note)',
-		cmdDecrypt: 'AI Alias: Convert aliases to real names (selection or whole note)',
-		cmdPrefix: 'AI Alias: Copy AI prompt prefix (safe, no real names)',
+cmdEncrypt: 'AI Alias: Convert real names to aliases (真实名转代号)',
+cmdDecrypt: 'AI Alias: Convert aliases to real names (代号转真实名)',
+cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		menuEncrypt: 'AI Alias: Real name → Alias',
 		menuDecrypt: 'AI Alias: Alias → Real name',
 		emptyEncrypt: 'Mapping table is empty; add entries in settings first',
@@ -174,6 +206,81 @@ const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 		catNotFound: 'Category not found',
 		batchPerLine: 'Per line: real|category',
 		batchCatDefault: 'Default category',
+		// ---- v1.7.0 batch operations: settings ----
+		batchHeading: 'Batch operations (file explorer)',
+		batchIncludeSub: 'Include subfolders',
+		batchIncludeSubDesc: 'When running a batch action on a folder, also process notes inside its subfolders.',
+		batchBarePolicy: 'Bare alias codes on batch decrypt',
+		batchBarePolicyDesc:
+			'A bare code is an alias that appears without the wrapper (AI replies often drop it). "Confirm each" lists every bare code, unchecked by default. "Skip" restores only aliases that still have the wrapper.',
+		batchBarePolicyConfirm: 'Confirm each (recommended)',
+		batchBarePolicySkip: 'Skip bare codes',
+		batchRename: 'Also restore note titles on batch decrypt',
+		batchRenameDesc:
+			'Renames the note files. This affects links from other notes and cannot be undone with Ctrl/Cmd+Z. Off by default.',
+		batchSkipFm: 'Skip YAML frontmatter when batch encrypting',
+		batchSkipFmDesc: 'Leave the leading --- properties block untouched so it stays valid YAML.',
+		batchBackup: 'Create a snapshot before writing',
+		batchBackupDesc:
+			'Stores the original content of every file about to change so "Undo last batch operation" can roll it back. Snapshots contain real names and live in the plugin folder next to your mapping table.',
+		batchBackupKeepName: 'Snapshots to keep',
+		batchBackupKeepDesc: 'Older snapshots are removed automatically. Allowed range 1–20.',
+		// ---- v1.7.0 batch operations: menu ----
+		menuBatchEncFile: 'AI Alias: Real name → Alias',
+		menuBatchDecFile: 'AI Alias: Alias → Real name',
+		menuBatchEncFolder: 'AI Alias: Batch encrypt (%d notes)',
+		menuBatchDecFolder: 'AI Alias: Batch decrypt (%d notes)',
+		menuBatchEncSel: 'AI Alias: Batch encrypt (%d selected)',
+		menuBatchDecSel: 'AI Alias: Batch decrypt (%d selected)',
+		// ---- v1.7.0 batch operations: run-time notices ----
+		batchScanning: 'Scanning… %a / %b',
+		batchWriting: 'Writing… %a / %b',
+		batchNoTargets: 'No markdown notes in the selection',
+		batchDone: 'Done: %f note(s) · %n replacement(s)',
+		batchDoneFail: ' · %d failed',
+		batchDoneConflict: ' · %d skipped (changed since the scan)',
+		batchDoneUndoable: ' · undoable',
+		backupFail: 'Snapshot failed, nothing was written: ',
+		// ---- v1.7.0 batch operations: preview modal ----
+		bpEncTitle: 'Batch encrypt preview',
+		bpDecTitle: 'Batch decrypt preview',
+		bpTarget: 'Target: %s',
+		bpRecursive: ' (including subfolders)',
+		bpSummary: 'Scanned %s note(s) → will change %c · %n replacement(s)',
+		bpBreakdown: 'With alias %w · bare %b · titles %t',
+		bpPolicyHint: 'Bare codes are listed one by one for you to confirm; nothing is restored automatically.',
+		bpSkipBare: 'Skip bare codes (restore only aliases that have the wrapper)',
+		bpRenameTitles: 'Also restore note titles (renames the files)',
+		bpRenameWarn: 'Renaming affects links from other notes and cannot be undone with Ctrl/Cmd+Z.',
+		bpNoChange: 'no change',
+		bpBadgeWrapped: 'contains %d',
+		bpBadgeBare: 'bare %d',
+		bpBadgeTitle: 'title %d',
+		bpBadgeReal: '%d hit(s)',
+		bpSecWrapped: 'Aliases with wrapper (always restored)',
+		bpSecBare: 'Bare codes (check the ones to restore)',
+		bpSecTitle: 'Note title',
+		bpSecReal: 'Real names to mask',
+		bpWarn: 'This writes straight to disk. In-note undo (Ctrl/Cmd+Z) will not bring it back.',
+		bpWarnBackup: 'A snapshot is created automatically — use "Undo last batch operation" to roll back.',
+		bpWarnNoBackup: 'Snapshots are turned OFF in settings, so this cannot be rolled back.',
+		bpWarnMany: 'More than %d notes will be modified. Review carefully before running.',
+		bpSelAll: 'Select all',
+		bpSelNone: 'Select none',
+		bpRun: 'Run (%d notes)',
+		bpConfirmMany: '%d notes will be modified and written to disk. Continue?',
+		bpEmpty: 'No mapping hits found in the scanned notes.',
+		// ---- v1.7.0 batch operations: undo ----
+		cmdUndo: 'AI Alias: Undo last batch operation (撤销上次批量操作)',
+		undoNone: 'No batch snapshot found',
+		undoConfirm: 'Roll back the batch %d run from %t? %n note(s) will be restored.',
+		undoDirEnc: 'encrypt',
+		undoDirDec: 'decrypt',
+		undoRun: 'Roll back',
+		undoDone: 'Rolled back %n note(s)',
+		undoSkipped: ' · skipped %n changed since then',
+		undoMissing: ' · %n note(s) no longer exist',
+		undoFail: 'Undo failed: ',
 		// preset category meanings (legend)
 		cat_platform: 'Platform',
 		cat_resource: 'Resource',
@@ -242,9 +349,9 @@ const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 		imported: '已清空并插入 %d 条',
 		importFail: '导入失败：',
 		// commands
-		cmdEncrypt: 'AI Alias：真实名转代号（选中/全文）',
-		cmdDecrypt: 'AI Alias：代号转真实名（选中/全文）',
-		cmdPrefix: 'AI Alias：复制 AI 提示词前缀（安全，无真实名称）',
+cmdEncrypt: 'AI Alias：真实名转代号（Convert real names to aliases）',
+cmdDecrypt: 'AI Alias：代号转真实名（Convert aliases to real names）',
+cmdPrefix: 'AI Alias：复制 AI 提示词前缀（Copy AI prompt prefix）',
 		menuEncrypt: 'AI Alias：真实名 → 代号',
 		menuDecrypt: 'AI Alias：代号 → 真实名',
 		emptyEncrypt: '映射表为空，请先在设置中添加条目',
@@ -301,6 +408,80 @@ const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 		catNotFound: '未找到该类别',
 		batchPerLine: '每行格式：原文|类别',
 		batchCatDefault: '默认类别',
+		// ---- v1.7.0 批量操作：设置项 ----
+		batchHeading: '批量操作（文件列表右键）',
+		batchIncludeSub: '包含子文件夹',
+		batchIncludeSubDesc: '对文件夹执行批量操作时，是否一并处理其子文件夹内的笔记。',
+		batchBarePolicy: '批量解密时的裸代号策略',
+		batchBarePolicyDesc:
+			'裸代号指没有前后缀包裹的代号（AI 回复经常把包裹弄丢）。「逐条确认」会把所有裸代号列出、默认不勾选；「跳过」则只还原仍带前后缀的代号。',
+		batchBarePolicyConfirm: '逐条确认（推荐）',
+		batchBarePolicySkip: '跳过裸代号',
+		batchRename: '批量解密时一并还原笔记标题',
+		batchRenameDesc: '会重命名笔记文件，影响其它笔记指向它的链接，且无法用 Ctrl/Cmd+Z 撤销。默认关闭。',
+		batchSkipFm: '批量加密时跳过 YAML frontmatter',
+		batchSkipFmDesc: '不改动笔记开头的 --- 属性区，避免产生非法 YAML。',
+		batchBackup: '写入前创建快照',
+		batchBackupDesc:
+			'把所有即将变更文件的原始内容存下来，供「撤销上次批量操作」回滚。快照含真实名，与映射表同在插件目录下，请同等对待。',
+		batchBackupKeepName: '快照保留份数',
+		batchBackupKeepDesc: '超出份数的旧快照会被自动清理。允许范围 1–20。',
+		// ---- v1.7.0 批量操作：右键菜单 ----
+		menuBatchEncFile: 'AI Alias：真实名 → 代号',
+		menuBatchDecFile: 'AI Alias：代号 → 真实名',
+		menuBatchEncFolder: 'AI Alias：批量加密（%d 篇笔记）',
+		menuBatchDecFolder: 'AI Alias：批量解密（%d 篇笔记）',
+		menuBatchEncSel: 'AI Alias：批量加密（已选 %d 篇）',
+		menuBatchDecSel: 'AI Alias：批量解密（已选 %d 篇）',
+		// ---- v1.7.0 批量操作：运行提示 ----
+		batchScanning: '正在扫描… %a / %b',
+		batchWriting: '正在写入… %a / %b',
+		batchNoTargets: '所选范围内没有 Markdown 笔记',
+		batchDone: '已处理 %f 篇 · 替换 %n 处',
+		batchDoneFail: ' · 失败 %d',
+		batchDoneConflict: ' · 跳过 %d 篇（扫描后被改动）',
+		batchDoneUndoable: ' · 可撤销',
+		backupFail: '快照创建失败，未写入任何文件：',
+		// ---- v1.7.0 批量操作：预览弹窗 ----
+		bpEncTitle: '批量加密预览',
+		bpDecTitle: '批量解密预览',
+		bpTarget: '目标：%s',
+		bpRecursive: '（含子文件夹）',
+		bpSummary: '扫描 %s 篇 → 将修改 %c 篇 · 共 %n 处',
+		bpBreakdown: '含代号 %w · 裸代号 %b · 标题 %t',
+		bpPolicyHint: '裸代号默认全部列出、逐条勾选确认，不会自动还原。',
+		bpSkipBare: '跳过裸代号（仅还原带前后缀的代号）',
+		bpRenameTitles: '同时还原笔记标题（会重命名文件）',
+		bpRenameWarn: '重命名会影响其它笔记指向它的链接，且无法用 Ctrl/Cmd+Z 撤销。',
+		bpNoChange: '无变化',
+		bpBadgeWrapped: '含 %d',
+		bpBadgeBare: '裸 %d',
+		bpBadgeTitle: '标题 %d',
+		bpBadgeReal: '%d 处',
+		bpSecWrapped: '带前后缀的代号（必定还原）',
+		bpSecBare: '裸代号（勾选要还原的）',
+		bpSecTitle: '笔记标题',
+		bpSecReal: '将被替换为代号的真实名',
+		bpWarn: '此操作直接写入磁盘，笔记内撤销（Ctrl/Cmd+Z）无效。',
+		bpWarnBackup: '已自动创建快照，可用「撤销上次批量操作」回滚。',
+		bpWarnNoBackup: '设置中已关闭快照，本次操作无法回滚。',
+		bpWarnMany: '将修改超过 %d 篇笔记，执行前请仔细核对。',
+		bpSelAll: '全选',
+		bpSelNone: '全不选',
+		bpRun: '执行（%d 篇）',
+		bpConfirmMany: '将修改并写入 %d 篇笔记，确定继续？',
+		bpEmpty: '扫描范围内没有任何映射命中。',
+		// ---- v1.7.0 批量操作：撤销 ----
+		cmdUndo: 'AI Alias：撤销上次批量操作（Undo last batch operation）',
+		undoNone: '没有找到批量操作快照',
+		undoConfirm: '要回滚 %t 的批量%d吗？将恢复 %n 篇笔记。',
+		undoDirEnc: '加密',
+		undoDirDec: '解密',
+		undoRun: '回滚',
+		undoDone: '已回滚 %n 篇笔记',
+		undoSkipped: ' · 跳过 %n 篇（之后被手工改动）',
+		undoMissing: ' · %n 篇笔记已不存在',
+		undoFail: '撤销失败：',
 		// 预设类别含义（图例）
 		cat_platform: '平台',
 		cat_resource: '资源',
@@ -317,6 +498,145 @@ function isValidCode(code: string): boolean {
 
 function escapeRegex(s: string): string {
 	return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// ---------------- v1.7.0 batch: editor-independent helpers ----------------
+
+type BatchDirection = 'encrypt' | 'decrypt';
+
+interface Span {
+	start: number;
+	end: number;
+}
+
+interface CodeHit extends Span {
+	code: string;
+	real: string;
+	category: string | null;
+}
+
+interface BatchScan {
+	file: TFile;
+	path: string;
+	original: string;
+	// encrypt direction
+	realHits: CodeHit[];
+	// decrypt direction
+	wrappedHits: CodeHit[];
+	decrypted: string;
+	bareHits: CodeHit[];
+	titleHits: CodeHit[];
+	// UI state
+	selected: boolean;
+	expanded: boolean;
+	bareChecks: boolean[];
+	titleChecks: boolean[];
+}
+
+interface BatchPlan {
+	file: TFile;
+	before: string;
+	after: string;
+	count: number;
+	renameTo?: string;
+}
+
+interface SnapshotEntry {
+	path: string;
+	before: string;
+	afterHash: string;
+	renameTo?: string;
+}
+
+interface Snapshot {
+	v: number;
+	ts: string;
+	direction: BatchDirection;
+	label: string;
+	entries: SnapshotEntry[];
+}
+
+// Keep the earliest match; among matches starting at the same spot keep the longest.
+function resolveOverlaps<T extends Span>(hits: T[]): T[] {
+	const sorted = [...hits].sort((a, b) => a.start - b.start || b.end - b.start - (a.end - a.start));
+	const out: T[] = [];
+	let lastEnd = -1;
+	for (const h of sorted) {
+		if (h.start >= lastEnd) {
+			out.push(h);
+			lastEnd = h.end;
+		}
+	}
+	return out;
+}
+
+// Rebuild a string, replacing the given spans. repl() returning null keeps the original slice.
+function spliceHits(text: string, hits: Span[], repl: (index: number) => string | null): string {
+	const order = hits.map((h, i) => ({ h, i })).sort((a, b) => a.h.start - b.h.start);
+	let out = '';
+	let cursor = 0;
+	for (const { h, i } of order) {
+		if (h.start < cursor) continue;
+		const r = repl(i);
+		out += text.slice(cursor, h.start);
+		out += r === null ? text.slice(h.start, h.end) : r;
+		cursor = h.end;
+	}
+	return out + text.slice(cursor);
+}
+
+// Length of the leading YAML frontmatter block (0 when there is none).
+function frontmatterLength(text: string): number {
+	if (!text.startsWith('---')) return 0;
+	const m = /^---[^\S\n]*\r?\n[\s\S]*?\r?\n---[^\S\n]*(\r?\n|$)/.exec(text);
+	return m ? m[0].length : 0;
+}
+
+// FNV-1a, used only to detect "this file changed since the snapshot".
+function hashStr(s: string): string {
+	let h = 0x811c9dc5;
+	for (let i = 0; i < s.length; i++) {
+		h ^= s.charCodeAt(i);
+		h = Math.imul(h, 0x01000193);
+	}
+	return (h >>> 0).toString(16);
+}
+
+function stamp(d: Date): string {
+	const p = (n: number): string => String(n).padStart(2, '0');
+	return (
+		String(d.getFullYear()) +
+		p(d.getMonth() + 1) +
+		p(d.getDate()) +
+		'-' +
+		p(d.getHours()) +
+		p(d.getMinutes()) +
+		p(d.getSeconds())
+	);
+}
+
+function prettyStamp(ts: string): string {
+	if (!/^\d{8}-\d{6}$/.test(ts)) return ts;
+	return (
+		ts.slice(0, 4) + '-' + ts.slice(4, 6) + '-' + ts.slice(6, 8) + ' ' + ts.slice(9, 11) + ':' + ts.slice(11, 13) + ':' + ts.slice(13, 15)
+	);
+}
+
+function yieldToUi(): Promise<void> {
+	return new Promise((resolve) => window.setTimeout(resolve, 0));
+}
+
+// Make a real name usable as a file name; returns null when nothing usable is left.
+function sanitizeFileName(s: string): string | null {
+	// drop control characters (code points 0–31) without embedding them literally
+	const noCtrl = Array.from(s)
+		.filter((ch) => (ch.codePointAt(0) ?? 0) >= 32)
+		.join('');
+	const cleaned = noCtrl
+		.replace(/[\\/:*?"<>|]/g, '_')
+		.replace(/^\.+/, '')
+		.replace(/[.\s]+$/, '');
+	return cleaned.length > 0 ? cleaned : null;
 }
 
 // Lightweight confirm dialog built on Modal (avoids the deprecated browser confirm()).
@@ -697,15 +1017,7 @@ class BareCodeConfirmModal extends Modal {
 	}
 
 	private sanitizeFileName(s: string): string | null {
-		// drop control characters (code points 0–31) without embedding them literally
-		const noCtrl = Array.from(s)
-			.filter((ch) => ch.codePointAt(0)! >= 32)
-			.join('');
-		const cleaned = noCtrl
-			.replace(/[\\/:*?"<>|]/g, '_')
-			.replace(/^\.+/, '')
-			.replace(/[.\s]+$/, '');
-		return cleaned.length > 0 ? cleaned : null;
+		return sanitizeFileName(s);
 	}
 
 	private setAll(v: boolean): void {
@@ -787,6 +1099,354 @@ class BareCodeConfirmModal extends Modal {
 	replaceBtn!: HTMLElement;
 }
 
+// ---------------- v1.7.0 batch preview / confirmation modal ----------------
+
+const DETAIL_CAP = 30; // max hits rendered per section inside one expanded file
+
+class BatchPreviewModal extends Modal {
+	plugin: AIAliasPlugin;
+	direction: BatchDirection;
+	label: string;
+	scans: BatchScan[];
+	skipBare: boolean;
+	renameTitles: boolean;
+
+	private summaryEl!: HTMLElement;
+	private breakdownEl!: HTMLElement;
+	private listEl!: HTMLElement;
+	private warnEl!: HTMLElement;
+	private runBtn!: HTMLButtonElement;
+
+	constructor(app: App, plugin: AIAliasPlugin, direction: BatchDirection, label: string, scans: BatchScan[]) {
+		super(app);
+		this.plugin = plugin;
+		this.direction = direction;
+		this.label = label;
+		this.scans = scans;
+		this.skipBare = plugin.settings.batchBareCodePolicy === 'skip';
+		this.renameTitles = plugin.settings.batchRenameTitles;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		const t = (k: string): string => this.plugin.t(k);
+		this.modalEl.addClass('ai-bpmodal');
+		this.titleEl.setText(this.direction === 'encrypt' ? t('bpEncTitle') : t('bpDecTitle'));
+		contentEl.createEl('p', { cls: 'ai-sub', text: t('bpTarget').replace('%s', this.label) });
+
+		const sum = contentEl.createEl('div', { cls: 'ai-bpsum' });
+		this.summaryEl = sum.createEl('div', { cls: 'ai-bpsum-main' });
+		this.breakdownEl = sum.createEl('div', { cls: 'ai-bpsum-sub' });
+
+		if (this.direction === 'decrypt') {
+			const pol = contentEl.createEl('div', { cls: 'ai-bppolicy' });
+			pol.createEl('div', { cls: 'ai-bppolicy-hint', text: t('bpPolicyHint') });
+			const l1 = pol.createEl('label', { cls: 'ai-bpcheck' });
+			const c1 = l1.createEl('input', { type: 'checkbox' });
+			c1.checked = this.skipBare;
+			l1.createSpan({ text: t('bpSkipBare') });
+			c1.addEventListener('change', () => {
+				this.skipBare = c1.checked;
+				this.renderList();
+				this.refresh();
+			});
+			const l2 = pol.createEl('label', { cls: 'ai-bpcheck' });
+			const c2 = l2.createEl('input', { type: 'checkbox' });
+			c2.checked = this.renameTitles;
+			l2.createSpan({ text: t('bpRenameTitles') });
+			c2.addEventListener('change', () => {
+				this.renameTitles = c2.checked;
+				this.renderList();
+				this.refresh();
+			});
+			pol.createEl('div', { cls: 'ai-bppolicy-warn', text: t('bpRenameWarn') });
+		}
+
+		this.listEl = contentEl.createEl('div', { cls: 'ai-bplist' });
+		this.warnEl = contentEl.createEl('p', { cls: 'ai-help ai-help-warn' });
+
+		const foot = contentEl.createEl('div', { cls: 'ai-foot' });
+		foot.createEl('button', { text: t('bpSelAll') }).addEventListener('click', () => this.setAll(true));
+		foot.createEl('button', { text: t('bpSelNone') }).addEventListener('click', () => this.setAll(false));
+		foot.createEl('button', { text: t('cancel') }).addEventListener('click', () => this.close());
+		this.runBtn = foot.createEl('button', { text: '', cls: 'mod-cta' });
+		this.runBtn.addEventListener('click', () => this.confirmRun());
+
+		this.renderList();
+		this.refresh();
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+
+	// ---- derived state ----
+
+	private hasPotential(s: BatchScan): boolean {
+		if (this.direction === 'encrypt') return s.realHits.length > 0;
+		if (s.wrappedHits.length > 0) return true;
+		if (!this.skipBare && s.bareHits.length > 0) return true;
+		if (this.renameTitles && s.titleHits.length > 0) return true;
+		return false;
+	}
+
+	private counts(s: BatchScan): { w: number; b: number; ti: number; n: number } {
+		if (this.direction === 'encrypt') {
+			const n = s.realHits.length;
+			return { w: n, b: 0, ti: 0, n };
+		}
+		const w = s.wrappedHits.length;
+		const b = this.skipBare ? 0 : s.bareChecks.filter(Boolean).length;
+		const ti = this.renameTitles ? s.titleChecks.filter(Boolean).length : 0;
+		return { w, b, ti, n: w + b + ti };
+	}
+
+	// ---- rendering ----
+
+	private renderList(): void {
+		const t = (k: string): string => this.plugin.t(k);
+		this.listEl.empty();
+		if (this.scans.length === 0) {
+			this.listEl.createEl('div', { cls: 'ai-bpempty', text: t('bpEmpty') });
+			return;
+		}
+		for (const s of this.scans) {
+			const active = this.hasPotential(s);
+			if (!active) s.selected = false;
+			const item = this.listEl.createEl('div', { cls: 'ai-bpitem' });
+			item.toggleClass('is-dim', !active);
+			const row = item.createEl('div', { cls: 'ai-bprow' });
+			const cb = row.createEl('input', { type: 'checkbox' });
+			cb.checked = s.selected;
+			cb.disabled = !active;
+			cb.addEventListener('change', () => {
+				s.selected = cb.checked;
+				this.refresh();
+			});
+			const main = row.createEl('div', { cls: 'ai-bpmain' });
+			main.createEl('span', { cls: 'ai-bppath', text: s.path });
+			const badges = main.createEl('span', { cls: 'ai-bpbadges' });
+			this.renderBadges(badges, s, active);
+			main.createEl('span', { cls: 'ai-bparrow', text: active ? (s.expanded ? '▾' : '▸') : '' });
+			if (active) {
+				main.addClass('is-clickable');
+				main.addEventListener('click', () => {
+					s.expanded = !s.expanded;
+					this.renderList();
+				});
+			}
+			if (active && s.expanded) this.renderDetail(item, s);
+		}
+	}
+
+	private renderBadges(parent: HTMLElement, s: BatchScan, active: boolean): void {
+		const t = (k: string): string => this.plugin.t(k);
+		if (!active) {
+			parent.createEl('span', { cls: 'ai-bpbadge is-none', text: t('bpNoChange') });
+			return;
+		}
+		if (this.direction === 'encrypt') {
+			parent.createEl('span', { cls: 'ai-bpbadge', text: t('bpBadgeReal').replace('%d', String(s.realHits.length)) });
+			return;
+		}
+		if (s.wrappedHits.length > 0) {
+			parent.createEl('span', { cls: 'ai-bpbadge', text: t('bpBadgeWrapped').replace('%d', String(s.wrappedHits.length)) });
+		}
+		if (!this.skipBare && s.bareHits.length > 0) {
+			parent.createEl('span', { cls: 'ai-bpbadge is-bare', text: t('bpBadgeBare').replace('%d', String(s.bareHits.length)) });
+		}
+		if (this.renameTitles && s.titleHits.length > 0) {
+			parent.createEl('span', { cls: 'ai-bpbadge is-title', text: t('bpBadgeTitle').replace('%d', String(s.titleHits.length)) });
+		}
+	}
+
+	private renderDetail(parent: HTMLElement, s: BatchScan): void {
+		const t = (k: string): string => this.plugin.t(k);
+		const box = parent.createEl('div', { cls: 'ai-bpdetail' });
+		if (this.direction === 'encrypt') {
+			this.renderSection(box, t('bpSecReal'), s.realHits, s.original, null);
+			return;
+		}
+		if (s.wrappedHits.length > 0) {
+			this.renderSection(box, t('bpSecWrapped'), s.wrappedHits, s.original, null);
+		}
+		if (!this.skipBare && s.bareHits.length > 0) {
+			this.renderSection(box, t('bpSecBare'), s.bareHits, s.decrypted, s.bareChecks);
+		}
+		if (this.renameTitles && s.titleHits.length > 0) {
+			this.renderSection(box, t('bpSecTitle'), s.titleHits, s.file.basename, s.titleChecks);
+		}
+	}
+
+	private renderSection(
+		box: HTMLElement,
+		title: string,
+		hits: CodeHit[],
+		source: string,
+		checks: boolean[] | null
+	): void {
+		box.createEl('div', { cls: 'ai-bpsec', text: title });
+		const list = box.createEl('div', { cls: 'ai-bphits' });
+		const shown = Math.min(hits.length, DETAIL_CAP);
+		for (let i = 0; i < shown; i++) {
+			const h = hits[i];
+			const line = list.createEl('div', { cls: 'ai-bphit' });
+			if (checks) {
+				const cb = line.createEl('input', { type: 'checkbox' });
+				cb.checked = checks[i];
+				cb.addEventListener('change', () => {
+					checks[i] = cb.checked;
+					this.refresh();
+				});
+			} else {
+				line.createEl('span', { cls: 'ai-bpfix', text: '•' });
+			}
+			const body = line.createEl('div', { cls: 'ai-barebody' });
+			const head = body.createEl('div', { cls: 'ai-barecode' });
+			if (this.direction === 'encrypt') {
+				head.createEl('span', { text: h.real, cls: 'ai-real' });
+				head.createEl('span', { text: '  →  ', cls: 'ai-arrow' });
+				head.createEl('span', { text: this.plugin.wrap(h.code), cls: 'ai-code' });
+			} else {
+				head.createEl('span', { text: h.code, cls: 'ai-code' });
+				head.createEl('span', { text: '  →  ', cls: 'ai-arrow' });
+				head.createEl('span', { text: h.real, cls: 'ai-real' });
+			}
+			head.createEl('span', { text: ' (' + this.catLabel(h.category) + ')', cls: 'ai-bpcat' });
+			this.ctxLine(body, source, h);
+		}
+		if (hits.length > shown) {
+			list.createEl('div', { cls: 'ai-bpmore', text: '… +' + String(hits.length - shown) });
+		}
+	}
+
+	private catLabel(id: string | null): string {
+		const cat = this.plugin.categoryById(id);
+		return cat ? cat.name : this.plugin.t('noCat');
+	}
+
+	private ctxLine(parent: HTMLElement, source: string, h: CodeHit): void {
+		const before = source.slice(Math.max(0, h.start - 20), h.start);
+		const after = source.slice(h.end, Math.min(source.length, h.end + 20));
+		const ctx = parent.createEl('div', { cls: 'ai-barectx' });
+		if (h.start > 20) ctx.createSpan({ text: '…' });
+		ctx.createSpan({ text: before });
+		ctx.createSpan({ text: source.slice(h.start, h.end), cls: 'ai-hl' });
+		ctx.createSpan({ text: after });
+		if (h.end + 20 < source.length) ctx.createSpan({ text: '…' });
+	}
+
+	private refresh(): void {
+		const t = (k: string): string => this.plugin.t(k);
+		let files = 0;
+		let n = 0;
+		let w = 0;
+		let b = 0;
+		let ti = 0;
+		for (const s of this.scans) {
+			if (!s.selected || !this.hasPotential(s)) continue;
+			const c = this.counts(s);
+			if (c.n === 0) continue;
+			files++;
+			n += c.n;
+			w += c.w;
+			b += c.b;
+			ti += c.ti;
+		}
+		this.summaryEl.setText(
+			t('bpSummary')
+				.replace('%s', String(this.scans.length))
+				.replace('%c', String(files))
+				.replace('%n', String(n))
+		);
+		if (this.direction === 'decrypt') {
+			this.breakdownEl.setText(
+				t('bpBreakdown').replace('%w', String(w)).replace('%b', String(b)).replace('%t', String(ti))
+			);
+			this.breakdownEl.toggleClass('is-hidden', false);
+		} else {
+			this.breakdownEl.toggleClass('is-hidden', true);
+		}
+
+		this.warnEl.empty();
+		this.warnEl.createSpan({ text: t('bpWarn') });
+		this.warnEl.createEl('br');
+		this.warnEl.createSpan({
+			text: this.plugin.settings.batchBackupEnabled ? t('bpWarnBackup') : t('bpWarnNoBackup')
+		});
+		const many = files > BATCH_MANY;
+		if (many) {
+			this.warnEl.createEl('br');
+			this.warnEl.createSpan({ text: t('bpWarnMany').replace('%d', String(BATCH_MANY)), cls: 'ai-bpdanger' });
+		}
+		this.warnEl.toggleClass('ai-help-danger', many);
+
+		this.runBtn.setText(t('bpRun').replace('%d', String(files)));
+		this.runBtn.disabled = files === 0;
+	}
+
+	private setAll(v: boolean): void {
+		for (const s of this.scans) if (this.hasPotential(s)) s.selected = v;
+		this.renderList();
+		this.refresh();
+	}
+
+	// ---- run ----
+
+	private buildPlans(): BatchPlan[] {
+		const plans: BatchPlan[] = [];
+		for (const s of this.scans) {
+			if (!s.selected || !this.hasPotential(s)) continue;
+			const c = this.counts(s);
+			if (c.n === 0) continue;
+			let after: string;
+			let renameTo: string | undefined;
+			if (this.direction === 'encrypt') {
+				after = spliceHits(s.original, s.realHits, (i) => this.plugin.wrap(s.realHits[i].code));
+			} else {
+				after = s.decrypted;
+				if (!this.skipBare && s.bareHits.length > 0) {
+					after = spliceHits(s.decrypted, s.bareHits, (i) => (s.bareChecks[i] ? s.bareHits[i].real : null));
+				}
+				if (this.renameTitles && s.titleHits.some((_h, i) => s.titleChecks[i])) {
+					const built = spliceHits(s.file.basename, s.titleHits, (i) =>
+						s.titleChecks[i] ? sanitizeFileName(s.titleHits[i].real) : null
+					);
+					if (built.length > 0 && built !== s.file.basename) {
+						const dir = s.file.parent && s.file.parent.path !== '/' ? s.file.parent.path : '';
+						const ext = s.file.extension ? '.' + s.file.extension : '';
+						renameTo = (dir ? dir + '/' : '') + built + ext;
+					}
+				}
+			}
+			if (after === s.original && renameTo === undefined) continue;
+			plans.push({ file: s.file, before: s.original, after, count: c.n, renameTo });
+		}
+		return plans;
+	}
+
+	private confirmRun(): void {
+		const t = (k: string): string => this.plugin.t(k);
+		const plans = this.buildPlans();
+		if (plans.length === 0) return;
+		const go = (): void => {
+			this.close();
+			void this.plugin.executeBatch(this.direction, plans, this.label);
+		};
+		if (plans.length > BATCH_MANY) {
+			new ConfirmDialog(
+				this.app,
+				t('bpConfirmMany').replace('%d', String(plans.length)),
+				t('bpRun').replace('%d', String(plans.length)),
+				t('cancel'),
+				go
+			).open();
+			return;
+		}
+		go();
+	}
+}
+
 class AIAliasSettingTab extends PluginSettingTab {
 	plugin: AIAliasPlugin;
 
@@ -837,9 +1497,8 @@ class AIAliasSettingTab extends PluginSettingTab {
 					.addOption('zh', '中文')
 					.setValue(this.plugin.settings.language)
 					.onChange((v) => {
-						this.plugin.settings.language = v as 'en' | 'zh';
-						this.plugin.registerCommands();
-						void this.plugin.save();
+					this.plugin.settings.language = v as 'en' | 'zh';
+					void this.plugin.save();
 						this.display();
 					})
 			);
@@ -879,6 +1538,75 @@ class AIAliasSettingTab extends PluginSettingTab {
 			)
 			.addButton((btn) =>
 				btn.setButtonText(t('importBtn')).onClick(() => new ImportModal(this.app, this.plugin, this).open())
+			);
+
+		// ---- Batch operations (v1.7.0) ----
+		new Setting(containerEl).setName(t('batchHeading')).setHeading();
+
+		new Setting(containerEl)
+			.setName(t('batchIncludeSub'))
+			.setDesc(t('batchIncludeSubDesc'))
+			.addToggle((tg) =>
+				tg.setValue(this.plugin.settings.batchIncludeSubfolders).onChange((v) => {
+					this.plugin.settings.batchIncludeSubfolders = v;
+					void this.plugin.save();
+				})
+			);
+
+		new Setting(containerEl)
+			.setName(t('batchBarePolicy'))
+			.setDesc(t('batchBarePolicyDesc'))
+			.addDropdown((d) =>
+				d
+					.addOption('confirmAll', t('batchBarePolicyConfirm'))
+					.addOption('skip', t('batchBarePolicySkip'))
+					.setValue(this.plugin.settings.batchBareCodePolicy)
+					.onChange((v) => {
+						this.plugin.settings.batchBareCodePolicy = v === 'skip' ? 'skip' : 'confirmAll';
+						void this.plugin.save();
+					})
+			);
+
+		new Setting(containerEl)
+			.setName(t('batchRename'))
+			.setDesc(t('batchRenameDesc'))
+			.addToggle((tg) =>
+				tg.setValue(this.plugin.settings.batchRenameTitles).onChange((v) => {
+					this.plugin.settings.batchRenameTitles = v;
+					void this.plugin.save();
+				})
+			);
+
+		new Setting(containerEl)
+			.setName(t('batchSkipFm'))
+			.setDesc(t('batchSkipFmDesc'))
+			.addToggle((tg) =>
+				tg.setValue(this.plugin.settings.batchSkipFrontmatter).onChange((v) => {
+					this.plugin.settings.batchSkipFrontmatter = v;
+					void this.plugin.save();
+				})
+			);
+
+		new Setting(containerEl)
+			.setName(t('batchBackup'))
+			.setDesc(t('batchBackupDesc'))
+			.addToggle((tg) =>
+				tg.setValue(this.plugin.settings.batchBackupEnabled).onChange((v) => {
+					this.plugin.settings.batchBackupEnabled = v;
+					void this.plugin.save();
+				})
+			);
+
+		new Setting(containerEl)
+			.setName(t('batchBackupKeepName'))
+			.setDesc(t('batchBackupKeepDesc'))
+			.addText((tc) =>
+				tc.setValue(String(this.plugin.settings.batchBackupKeep)).onChange((v) => {
+					const n = Number(v);
+					if (!Number.isFinite(n)) return;
+					this.plugin.settings.batchBackupKeep = Math.min(20, Math.max(1, Math.floor(n)));
+					void this.plugin.save();
+				})
 			);
 
 		// ---- Category manager (lightweight) ----
@@ -1045,6 +1773,7 @@ class AIAliasSettingTab extends PluginSettingTab {
 		inp.value = v;
 		void this.plugin.save();
 		new Notice(t('catPrefixKept'));
+		this.refreshFilterOptions();
 		this.renderTable();
 	}
 
@@ -1096,9 +1825,16 @@ class AIAliasSettingTab extends PluginSettingTab {
 	}
 
 	private refreshFilterOptions(): void {
-		if (!this.filterSel) return;
-		const cur = this.filterSel.value;
-		this.fillCatSelect(this.filterSel, true, cur, true);
+		if (this.filterSel) {
+			const cur = this.filterSel.value;
+			this.fillCatSelect(this.filterSel, true, cur, true);
+		}
+		// Keep the inline "add mapping" category dropdown in sync with
+		// the live categories (otherwise newly added categories are missing).
+		if (this.addCatEl) {
+			const cur = this.addCatEl.value;
+			this.fillCatSelect(this.addCatEl, true, cur);
+		}
 	}
 
 	// ---------- uncategorized notice ----------
@@ -1589,15 +2325,27 @@ export default class AIAliasPlugin extends Plugin {
 				);
 			})
 		);
+
+		// ---- v1.7.0: file explorer batch entries ----
+		this.registerEvent(
+			this.app.workspace.on('file-menu', (menu, file) => {
+				this.addBatchMenu(menu, [file], false);
+			})
+		);
+		// 'files-menu' (multi-select) reached the public d.ts later than 'file-menu';
+		// register defensively so older API surfaces just degrade silently.
+		try {
+			this.registerEvent(
+				this.app.workspace.on('files-menu', (menu, files) => {
+					this.addBatchMenu(menu, files, true);
+				})
+			);
+		} catch {
+			// multi-select entry unavailable on this Obsidian build — single file / folder still works
+		}
 	}
 
 	registerCommands(): void {
-		const ids = ['encrypt', 'decrypt', 'copy-ai-prefix'];
-		const appCommands = (this.app as unknown as { commands: { removeCommand: (id: string) => void } }).commands;
-		for (const id of ids) {
-			appCommands.removeCommand(this.manifest.id + ':' + id);
-		}
-
 		this.addCommand({
 			id: 'encrypt',
 			name: this.t('cmdEncrypt'),
@@ -1622,6 +2370,388 @@ export default class AIAliasPlugin extends Plugin {
 					.catch((e) => new Notice(this.t('copyFail') + (e instanceof Error ? e.message : String(e))));
 			}
 		});
+		this.addCommand({
+			id: 'undo-last-batch',
+			name: this.t('cmdUndo'),
+			callback: () => {
+				void this.undoLastBatch();
+			}
+		});
+	}
+
+	// ================= v1.7.0 batch operations =================
+
+	private isBatchTarget(f: TFile): boolean {
+		if (f.extension !== 'md') return false;
+		const p = f.path;
+		return !p.startsWith('.obsidian/') && !p.startsWith('.trash/');
+	}
+
+	private mdFilesUnder(folder: TFolder): TFile[] {
+		const out: TFile[] = [];
+		if (this.settings.batchIncludeSubfolders) {
+			Vault.recurseChildren(folder, (af) => {
+				if (af instanceof TFile && this.isBatchTarget(af)) out.push(af);
+			});
+		} else {
+			for (const c of folder.children) {
+				if (c instanceof TFile && this.isBatchTarget(c)) out.push(c);
+			}
+		}
+		return out;
+	}
+
+	private collectTargets(items: TAbstractFile[]): TFile[] {
+		const map = new Map<string, TFile>();
+		for (const it of items) {
+			if (it instanceof TFile) {
+				if (this.isBatchTarget(it)) map.set(it.path, it);
+			} else if (it instanceof TFolder) {
+				for (const f of this.mdFilesUnder(it)) map.set(f.path, f);
+			}
+		}
+		return Array.from(map.values()).sort((a, b) => a.path.localeCompare(b.path));
+	}
+
+	private addBatchMenu(menu: Menu, items: TAbstractFile[], multi: boolean): void {
+		const singleFile = !multi && items.length === 1 && items[0] instanceof TFile;
+		// a right-click on a single non-markdown file shows nothing at all
+		if (singleFile && !this.isBatchTarget(items[0] as TFile)) return;
+		const targets = this.collectTargets(items);
+		const n = targets.length;
+		if (multi && n === 0) return;
+
+		let encName: string;
+		let decName: string;
+		let label: string;
+		if (singleFile) {
+			encName = this.t('menuBatchEncFile');
+			decName = this.t('menuBatchDecFile');
+			label = items[0].path;
+		} else if (multi) {
+			encName = this.t('menuBatchEncSel').replace('%d', String(n));
+			decName = this.t('menuBatchDecSel').replace('%d', String(n));
+			label = items.map((f) => f.name).slice(0, 3).join(', ') + (items.length > 3 ? ' …' : '');
+		} else {
+			encName = this.t('menuBatchEncFolder').replace('%d', String(n));
+			decName = this.t('menuBatchDecFolder').replace('%d', String(n));
+			const fp = items[0].path === '/' ? this.app.vault.getName() : items[0].path + '/';
+			label = fp + (this.settings.batchIncludeSubfolders ? this.t('bpRecursive') : '');
+		}
+
+		const add = (title: string, icon: string, dir: BatchDirection): void => {
+			menu.addItem((item) => {
+				item.setTitle(title).setIcon(icon).setSection('ai-alias');
+				if (n === 0) {
+					item.setDisabled(true);
+					return;
+				}
+				item.onClick(() => {
+					void this.startBatch(targets, dir, label);
+				});
+			});
+		};
+		add(encName, 'lock', 'encrypt');
+		add(decName, 'unlock', 'decrypt');
+	}
+
+	// ---- scanning (read only) ----
+
+	private scanRealHits(text: string, base: number): CodeHit[] {
+		const hits: CodeHit[] = [];
+		for (const m of this.settings.mappings) {
+			if (!m.real) continue;
+			let idx = text.indexOf(m.real);
+			while (idx !== -1) {
+				hits.push({
+					start: base + idx,
+					end: base + idx + m.real.length,
+					code: m.code,
+					real: m.real,
+					category: m.category ?? null
+				});
+				idx = text.indexOf(m.real, idx + m.real.length);
+			}
+		}
+		return resolveOverlaps(hits);
+	}
+
+	private scanWrappedHits(text: string): CodeHit[] {
+		const hits: CodeHit[] = [];
+		for (const m of this.settings.mappings) {
+			const token = this.wrap(m.code);
+			if (!token) continue;
+			let idx = text.indexOf(token);
+			while (idx !== -1) {
+				hits.push({
+					start: idx,
+					end: idx + token.length,
+					code: m.code,
+					real: m.real,
+					category: m.category ?? null
+				});
+				idx = text.indexOf(token, idx + token.length);
+			}
+		}
+		return resolveOverlaps(hits);
+	}
+
+	private toCodeHits(hits: BareHit[]): CodeHit[] {
+		const byCode = new Map<string, Mapping>();
+		for (const m of this.settings.mappings) byCode.set(m.code, m);
+		return hits.map((h) => ({
+			start: h.start,
+			end: h.end,
+			code: h.code,
+			real: h.real,
+			category: byCode.get(h.code)?.category ?? null
+		}));
+	}
+
+	private scanOne(file: TFile, content: string, direction: BatchDirection): BatchScan {
+		const scan: BatchScan = {
+			file,
+			path: file.path,
+			original: content,
+			realHits: [],
+			wrappedHits: [],
+			decrypted: content,
+			bareHits: [],
+			titleHits: [],
+			selected: true,
+			expanded: false,
+			bareChecks: [],
+			titleChecks: []
+		};
+		if (direction === 'encrypt') {
+			const skip = this.settings.batchSkipFrontmatter ? frontmatterLength(content) : 0;
+			scan.realHits = this.scanRealHits(content.slice(skip), skip);
+		} else {
+			scan.wrappedHits = this.scanWrappedHits(content);
+			scan.decrypted = this.decrypt(content);
+			scan.bareHits = this.toCodeHits(this.scanBareCodes(scan.decrypted));
+			scan.titleHits = this.toCodeHits(this.scanBareCodes(file.basename));
+			// bare codes are never restored automatically — user ticks them one by one
+			scan.bareChecks = scan.bareHits.map(() => false);
+			scan.titleChecks = scan.titleHits.map(() => false);
+		}
+		return scan;
+	}
+
+	async startBatch(files: TFile[], direction: BatchDirection, label: string): Promise<void> {
+		if (this.settings.mappings.length === 0) {
+			new Notice(this.t(direction === 'encrypt' ? 'emptyEncrypt' : 'emptyDecrypt'));
+			return;
+		}
+		if (files.length === 0) {
+			new Notice(this.t('batchNoTargets'));
+			return;
+		}
+		const notice = new Notice(this.progressText('batchScanning', 0, files.length), 0);
+		const scans: BatchScan[] = [];
+		try {
+			for (let i = 0; i < files.length; i++) {
+				const content = await this.app.vault.cachedRead(files[i]);
+				scans.push(this.scanOne(files[i], content, direction));
+				if ((i + 1) % BATCH_YIELD === 0) {
+					notice.setMessage(this.progressText('batchScanning', i + 1, files.length));
+					await yieldToUi();
+				}
+			}
+		} finally {
+			notice.hide();
+		}
+		new BatchPreviewModal(this.app, this, direction, label, scans).open();
+	}
+
+	private progressText(key: string, a: number, b: number): string {
+		return this.t(key).replace('%a', String(a)).replace('%b', String(b));
+	}
+
+	// ---- snapshot / backup ----
+
+	private backupDir(): string {
+		const base = this.manifest.dir ?? this.app.vault.configDir + '/plugins/' + this.manifest.id;
+		return base + '/backups';
+	}
+
+	private async writeSnapshot(direction: BatchDirection, label: string, plans: BatchPlan[]): Promise<void> {
+		const ad = this.app.vault.adapter;
+		const dir = this.backupDir();
+		if (!(await ad.exists(dir))) await ad.mkdir(dir);
+		const ts = stamp(new Date());
+		const snap: Snapshot = {
+			v: SNAPSHOT_VERSION,
+			ts,
+			direction,
+			label,
+			entries: plans.map((p) => ({
+				path: p.file.path,
+				before: p.before,
+				afterHash: hashStr(p.after),
+				renameTo: p.renameTo
+			}))
+		};
+		await ad.write(dir + '/' + ts + '.json', JSON.stringify(snap));
+		await this.pruneSnapshots();
+	}
+
+	private async pruneSnapshots(): Promise<void> {
+		const ad = this.app.vault.adapter;
+		const dir = this.backupDir();
+		if (!(await ad.exists(dir))) return;
+		const listed = await ad.list(dir);
+		const keep = this.settings.batchBackupKeep;
+		const files = listed.files.filter((f) => f.endsWith('.json')).sort();
+		const extra = files.length - keep;
+		for (let i = 0; i < extra; i++) {
+			try {
+				await ad.remove(files[i]);
+			} catch {
+				// a locked/removed snapshot must never break the main flow
+			}
+		}
+	}
+
+	// ---- execution ----
+
+	async executeBatch(direction: BatchDirection, plans: BatchPlan[], label: string): Promise<void> {
+		if (this.settings.batchBackupEnabled) {
+			try {
+				await this.writeSnapshot(direction, label, plans);
+			} catch (e) {
+				new Notice(this.t('backupFail') + (e instanceof Error ? e.message : String(e)));
+				return;
+			}
+		}
+
+		const notice = new Notice(this.progressText('batchWriting', 0, plans.length), 0);
+		let ok = 0;
+		let repl = 0;
+		let failed = 0;
+		let conflicted = 0;
+		const renames: BatchPlan[] = [];
+		try {
+			for (let i = 0; i < plans.length; i++) {
+				const p = plans[i];
+				try {
+					if (p.after !== p.before) {
+						let clash = false;
+						await this.app.vault.process(p.file, (data) => {
+							if (data !== p.before) {
+								clash = true;
+								return data;
+							}
+							return p.after;
+						});
+						if (clash) {
+							conflicted++;
+						} else {
+							ok++;
+							repl += p.count;
+						}
+					} else {
+						ok++;
+						repl += p.count;
+					}
+					if (p.renameTo) renames.push(p);
+				} catch {
+					failed++;
+				}
+				if ((i + 1) % 10 === 0) {
+					notice.setMessage(this.progressText('batchWriting', i + 1, plans.length));
+					await yieldToUi();
+				}
+			}
+			// renames run last so link updates see the final content
+			for (const p of renames) {
+				try {
+					if (p.renameTo) await this.app.fileManager.renameFile(p.file, p.renameTo);
+				} catch {
+					failed++;
+				}
+			}
+		} finally {
+			notice.hide();
+		}
+
+		let msg = this.t('batchDone').replace('%f', String(ok)).replace('%n', String(repl));
+		if (failed > 0) msg += this.t('batchDoneFail').replace('%d', String(failed));
+		if (conflicted > 0) msg += this.t('batchDoneConflict').replace('%d', String(conflicted));
+		if (this.settings.batchBackupEnabled) msg += this.t('batchDoneUndoable');
+		new Notice(msg, 8000);
+	}
+
+	// ---- undo ----
+
+	async undoLastBatch(): Promise<void> {
+		const ad = this.app.vault.adapter;
+		const dir = this.backupDir();
+		try {
+			if (!(await ad.exists(dir))) {
+				new Notice(this.t('undoNone'));
+				return;
+			}
+			const listed = await ad.list(dir);
+			const cands = listed.files.filter((f) => f.endsWith('.json') && !f.endsWith('.undone.json')).sort();
+			if (cands.length === 0) {
+				new Notice(this.t('undoNone'));
+				return;
+			}
+			const path = cands[cands.length - 1];
+			const snap = JSON.parse(await ad.read(path)) as Snapshot;
+			const msg = this.t('undoConfirm')
+				.replace('%d', this.t(snap.direction === 'encrypt' ? 'undoDirEnc' : 'undoDirDec'))
+				.replace('%t', prettyStamp(snap.ts))
+				.replace('%n', String(snap.entries.length));
+			new ConfirmDialog(this.app, msg, this.t('undoRun'), this.t('cancel'), () => {
+				void this.applyUndo(path, snap);
+			}).open();
+		} catch (e) {
+			new Notice(this.t('undoFail') + (e instanceof Error ? e.message : String(e)));
+		}
+	}
+
+	private async applyUndo(path: string, snap: Snapshot): Promise<void> {
+		let done = 0;
+		let skipped = 0;
+		let missing = 0;
+		try {
+			// reverse renames first, so the content restore can find files by original path
+			for (const e of snap.entries) {
+				if (!e.renameTo) continue;
+				const af = this.app.vault.getAbstractFileByPath(e.renameTo);
+				if (af instanceof TFile) {
+					try {
+						await this.app.fileManager.renameFile(af, e.path);
+					} catch {
+						// keep going; the content restore below reports what it cannot find
+					}
+				}
+			}
+			for (const e of snap.entries) {
+				const af = this.app.vault.getAbstractFileByPath(e.path);
+				if (!(af instanceof TFile)) {
+					missing++;
+					continue;
+				}
+				const cur = await this.app.vault.read(af);
+				if (hashStr(cur) !== e.afterHash) {
+					skipped++;
+					continue;
+				}
+				await this.app.vault.process(af, () => e.before);
+				done++;
+			}
+			await this.app.vault.adapter.rename(path, path.replace(/\.json$/, '.undone.json'));
+		} catch (e) {
+			new Notice(this.t('undoFail') + (e instanceof Error ? e.message : String(e)));
+			return;
+		}
+		let msg = this.t('undoDone').replace('%n', String(done));
+		if (skipped > 0) msg += this.t('undoSkipped').replace('%n', String(skipped));
+		if (missing > 0) msg += this.t('undoMissing').replace('%n', String(missing));
+		new Notice(msg, 8000);
 	}
 
 	wrap(code: string): string {
@@ -1729,6 +2859,15 @@ export default class AIAliasPlugin extends Plugin {
 		if (!Array.isArray(this.settings.mappings)) this.settings.mappings = [];
 		if (!Array.isArray(this.settings.categories)) this.settings.categories = [];
 		if (this.settings.language !== 'zh') this.settings.language = 'en';
+
+		// ---- v1.7.0 batch settings sanity (new keys merge from DEFAULT_SETTINGS, no schema bump) ----
+		this.settings.batchIncludeSubfolders = this.settings.batchIncludeSubfolders !== false;
+		this.settings.batchSkipFrontmatter = this.settings.batchSkipFrontmatter !== false;
+		this.settings.batchBackupEnabled = this.settings.batchBackupEnabled !== false;
+		this.settings.batchRenameTitles = this.settings.batchRenameTitles === true;
+		if (this.settings.batchBareCodePolicy !== 'skip') this.settings.batchBareCodePolicy = 'confirmAll';
+		const keep = Number(this.settings.batchBackupKeep);
+		this.settings.batchBackupKeep = Number.isFinite(keep) ? Math.min(20, Math.max(1, Math.floor(keep))) : 5;
 
 		// ---- v1.6.0 migration (idempotent) ----
 		let migrated = false;

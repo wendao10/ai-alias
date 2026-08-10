@@ -31,12 +31,21 @@ var import_obsidian = require("obsidian");
 var SCHEMA_VERSION = 2;
 var FILTER_ALL = "__all__";
 var FILTER_UNCAT = "__uncat__";
+var BATCH_YIELD = 20;
+var BATCH_MANY = 100;
+var SNAPSHOT_VERSION = 1;
 var DEFAULT_SETTINGS = {
   prefix: "[[",
   suffix: "]]",
   language: "en",
   mappings: [],
-  categories: []
+  categories: [],
+  batchIncludeSubfolders: true,
+  batchBareCodePolicy: "confirmAll",
+  batchRenameTitles: false,
+  batchSkipFrontmatter: true,
+  batchBackupEnabled: true,
+  batchBackupKeep: 5
 };
 var PRESET_DEFS = [
   { key: "platform", en: "Platform", zh: "\u5E73\u53F0", prefix: "PLATFORM" },
@@ -108,9 +117,9 @@ var STR = {
     imported: "Cleared and inserted %d entries",
     importFail: "Import failed: ",
     // commands
-    cmdEncrypt: "AI Alias: Convert real names to aliases (selection or whole note)",
-    cmdDecrypt: "AI Alias: Convert aliases to real names (selection or whole note)",
-    cmdPrefix: "AI Alias: Copy AI prompt prefix (safe, no real names)",
+    cmdEncrypt: "AI Alias: Convert real names to aliases (\u771F\u5B9E\u540D\u8F6C\u4EE3\u53F7)",
+    cmdDecrypt: "AI Alias: Convert aliases to real names (\u4EE3\u53F7\u8F6C\u771F\u5B9E\u540D)",
+    cmdPrefix: "AI Alias: Copy AI prompt prefix (\u590D\u5236 AI \u63D0\u793A\u8BCD\u524D\u7F00)",
     menuEncrypt: "AI Alias: Real name \u2192 Alias",
     menuDecrypt: "AI Alias: Alias \u2192 Real name",
     emptyEncrypt: "Mapping table is empty; add entries in settings first",
@@ -167,6 +176,78 @@ var STR = {
     catNotFound: "Category not found",
     batchPerLine: "Per line: real|category",
     batchCatDefault: "Default category",
+    // ---- v1.7.0 batch operations: settings ----
+    batchHeading: "Batch operations (file explorer)",
+    batchIncludeSub: "Include subfolders",
+    batchIncludeSubDesc: "When running a batch action on a folder, also process notes inside its subfolders.",
+    batchBarePolicy: "Bare alias codes on batch decrypt",
+    batchBarePolicyDesc: 'A bare code is an alias that appears without the wrapper (AI replies often drop it). "Confirm each" lists every bare code, unchecked by default. "Skip" restores only aliases that still have the wrapper.',
+    batchBarePolicyConfirm: "Confirm each (recommended)",
+    batchBarePolicySkip: "Skip bare codes",
+    batchRename: "Also restore note titles on batch decrypt",
+    batchRenameDesc: "Renames the note files. This affects links from other notes and cannot be undone with Ctrl/Cmd+Z. Off by default.",
+    batchSkipFm: "Skip YAML frontmatter when batch encrypting",
+    batchSkipFmDesc: "Leave the leading --- properties block untouched so it stays valid YAML.",
+    batchBackup: "Create a snapshot before writing",
+    batchBackupDesc: 'Stores the original content of every file about to change so "Undo last batch operation" can roll it back. Snapshots contain real names and live in the plugin folder next to your mapping table.',
+    batchBackupKeepName: "Snapshots to keep",
+    batchBackupKeepDesc: "Older snapshots are removed automatically. Allowed range 1\u201320.",
+    // ---- v1.7.0 batch operations: menu ----
+    menuBatchEncFile: "AI Alias: Real name \u2192 Alias",
+    menuBatchDecFile: "AI Alias: Alias \u2192 Real name",
+    menuBatchEncFolder: "AI Alias: Batch encrypt (%d notes)",
+    menuBatchDecFolder: "AI Alias: Batch decrypt (%d notes)",
+    menuBatchEncSel: "AI Alias: Batch encrypt (%d selected)",
+    menuBatchDecSel: "AI Alias: Batch decrypt (%d selected)",
+    // ---- v1.7.0 batch operations: run-time notices ----
+    batchScanning: "Scanning\u2026 %a / %b",
+    batchWriting: "Writing\u2026 %a / %b",
+    batchNoTargets: "No markdown notes in the selection",
+    batchDone: "Done: %f note(s) \xB7 %n replacement(s)",
+    batchDoneFail: " \xB7 %d failed",
+    batchDoneConflict: " \xB7 %d skipped (changed since the scan)",
+    batchDoneUndoable: " \xB7 undoable",
+    backupFail: "Snapshot failed, nothing was written: ",
+    // ---- v1.7.0 batch operations: preview modal ----
+    bpEncTitle: "Batch encrypt preview",
+    bpDecTitle: "Batch decrypt preview",
+    bpTarget: "Target: %s",
+    bpRecursive: " (including subfolders)",
+    bpSummary: "Scanned %s note(s) \u2192 will change %c \xB7 %n replacement(s)",
+    bpBreakdown: "With alias %w \xB7 bare %b \xB7 titles %t",
+    bpPolicyHint: "Bare codes are listed one by one for you to confirm; nothing is restored automatically.",
+    bpSkipBare: "Skip bare codes (restore only aliases that have the wrapper)",
+    bpRenameTitles: "Also restore note titles (renames the files)",
+    bpRenameWarn: "Renaming affects links from other notes and cannot be undone with Ctrl/Cmd+Z.",
+    bpNoChange: "no change",
+    bpBadgeWrapped: "contains %d",
+    bpBadgeBare: "bare %d",
+    bpBadgeTitle: "title %d",
+    bpBadgeReal: "%d hit(s)",
+    bpSecWrapped: "Aliases with wrapper (always restored)",
+    bpSecBare: "Bare codes (check the ones to restore)",
+    bpSecTitle: "Note title",
+    bpSecReal: "Real names to mask",
+    bpWarn: "This writes straight to disk. In-note undo (Ctrl/Cmd+Z) will not bring it back.",
+    bpWarnBackup: 'A snapshot is created automatically \u2014 use "Undo last batch operation" to roll back.',
+    bpWarnNoBackup: "Snapshots are turned OFF in settings, so this cannot be rolled back.",
+    bpWarnMany: "More than %d notes will be modified. Review carefully before running.",
+    bpSelAll: "Select all",
+    bpSelNone: "Select none",
+    bpRun: "Run (%d notes)",
+    bpConfirmMany: "%d notes will be modified and written to disk. Continue?",
+    bpEmpty: "No mapping hits found in the scanned notes.",
+    // ---- v1.7.0 batch operations: undo ----
+    cmdUndo: "AI Alias: Undo last batch operation (\u64A4\u9500\u4E0A\u6B21\u6279\u91CF\u64CD\u4F5C)",
+    undoNone: "No batch snapshot found",
+    undoConfirm: "Roll back the batch %d run from %t? %n note(s) will be restored.",
+    undoDirEnc: "encrypt",
+    undoDirDec: "decrypt",
+    undoRun: "Roll back",
+    undoDone: "Rolled back %n note(s)",
+    undoSkipped: " \xB7 skipped %n changed since then",
+    undoMissing: " \xB7 %n note(s) no longer exist",
+    undoFail: "Undo failed: ",
     // preset category meanings (legend)
     cat_platform: "Platform",
     cat_resource: "Resource",
@@ -235,9 +316,9 @@ var STR = {
     imported: "\u5DF2\u6E05\u7A7A\u5E76\u63D2\u5165 %d \u6761",
     importFail: "\u5BFC\u5165\u5931\u8D25\uFF1A",
     // commands
-    cmdEncrypt: "AI Alias\uFF1A\u771F\u5B9E\u540D\u8F6C\u4EE3\u53F7\uFF08\u9009\u4E2D/\u5168\u6587\uFF09",
-    cmdDecrypt: "AI Alias\uFF1A\u4EE3\u53F7\u8F6C\u771F\u5B9E\u540D\uFF08\u9009\u4E2D/\u5168\u6587\uFF09",
-    cmdPrefix: "AI Alias\uFF1A\u590D\u5236 AI \u63D0\u793A\u8BCD\u524D\u7F00\uFF08\u5B89\u5168\uFF0C\u65E0\u771F\u5B9E\u540D\u79F0\uFF09",
+    cmdEncrypt: "AI Alias\uFF1A\u771F\u5B9E\u540D\u8F6C\u4EE3\u53F7\uFF08Convert real names to aliases\uFF09",
+    cmdDecrypt: "AI Alias\uFF1A\u4EE3\u53F7\u8F6C\u771F\u5B9E\u540D\uFF08Convert aliases to real names\uFF09",
+    cmdPrefix: "AI Alias\uFF1A\u590D\u5236 AI \u63D0\u793A\u8BCD\u524D\u7F00\uFF08Copy AI prompt prefix\uFF09",
     menuEncrypt: "AI Alias\uFF1A\u771F\u5B9E\u540D \u2192 \u4EE3\u53F7",
     menuDecrypt: "AI Alias\uFF1A\u4EE3\u53F7 \u2192 \u771F\u5B9E\u540D",
     emptyEncrypt: "\u6620\u5C04\u8868\u4E3A\u7A7A\uFF0C\u8BF7\u5148\u5728\u8BBE\u7F6E\u4E2D\u6DFB\u52A0\u6761\u76EE",
@@ -294,6 +375,78 @@ var STR = {
     catNotFound: "\u672A\u627E\u5230\u8BE5\u7C7B\u522B",
     batchPerLine: "\u6BCF\u884C\u683C\u5F0F\uFF1A\u539F\u6587|\u7C7B\u522B",
     batchCatDefault: "\u9ED8\u8BA4\u7C7B\u522B",
+    // ---- v1.7.0 批量操作：设置项 ----
+    batchHeading: "\u6279\u91CF\u64CD\u4F5C\uFF08\u6587\u4EF6\u5217\u8868\u53F3\u952E\uFF09",
+    batchIncludeSub: "\u5305\u542B\u5B50\u6587\u4EF6\u5939",
+    batchIncludeSubDesc: "\u5BF9\u6587\u4EF6\u5939\u6267\u884C\u6279\u91CF\u64CD\u4F5C\u65F6\uFF0C\u662F\u5426\u4E00\u5E76\u5904\u7406\u5176\u5B50\u6587\u4EF6\u5939\u5185\u7684\u7B14\u8BB0\u3002",
+    batchBarePolicy: "\u6279\u91CF\u89E3\u5BC6\u65F6\u7684\u88F8\u4EE3\u53F7\u7B56\u7565",
+    batchBarePolicyDesc: "\u88F8\u4EE3\u53F7\u6307\u6CA1\u6709\u524D\u540E\u7F00\u5305\u88F9\u7684\u4EE3\u53F7\uFF08AI \u56DE\u590D\u7ECF\u5E38\u628A\u5305\u88F9\u5F04\u4E22\uFF09\u3002\u300C\u9010\u6761\u786E\u8BA4\u300D\u4F1A\u628A\u6240\u6709\u88F8\u4EE3\u53F7\u5217\u51FA\u3001\u9ED8\u8BA4\u4E0D\u52FE\u9009\uFF1B\u300C\u8DF3\u8FC7\u300D\u5219\u53EA\u8FD8\u539F\u4ECD\u5E26\u524D\u540E\u7F00\u7684\u4EE3\u53F7\u3002",
+    batchBarePolicyConfirm: "\u9010\u6761\u786E\u8BA4\uFF08\u63A8\u8350\uFF09",
+    batchBarePolicySkip: "\u8DF3\u8FC7\u88F8\u4EE3\u53F7",
+    batchRename: "\u6279\u91CF\u89E3\u5BC6\u65F6\u4E00\u5E76\u8FD8\u539F\u7B14\u8BB0\u6807\u9898",
+    batchRenameDesc: "\u4F1A\u91CD\u547D\u540D\u7B14\u8BB0\u6587\u4EF6\uFF0C\u5F71\u54CD\u5176\u5B83\u7B14\u8BB0\u6307\u5411\u5B83\u7684\u94FE\u63A5\uFF0C\u4E14\u65E0\u6CD5\u7528 Ctrl/Cmd+Z \u64A4\u9500\u3002\u9ED8\u8BA4\u5173\u95ED\u3002",
+    batchSkipFm: "\u6279\u91CF\u52A0\u5BC6\u65F6\u8DF3\u8FC7 YAML frontmatter",
+    batchSkipFmDesc: "\u4E0D\u6539\u52A8\u7B14\u8BB0\u5F00\u5934\u7684 --- \u5C5E\u6027\u533A\uFF0C\u907F\u514D\u4EA7\u751F\u975E\u6CD5 YAML\u3002",
+    batchBackup: "\u5199\u5165\u524D\u521B\u5EFA\u5FEB\u7167",
+    batchBackupDesc: "\u628A\u6240\u6709\u5373\u5C06\u53D8\u66F4\u6587\u4EF6\u7684\u539F\u59CB\u5185\u5BB9\u5B58\u4E0B\u6765\uFF0C\u4F9B\u300C\u64A4\u9500\u4E0A\u6B21\u6279\u91CF\u64CD\u4F5C\u300D\u56DE\u6EDA\u3002\u5FEB\u7167\u542B\u771F\u5B9E\u540D\uFF0C\u4E0E\u6620\u5C04\u8868\u540C\u5728\u63D2\u4EF6\u76EE\u5F55\u4E0B\uFF0C\u8BF7\u540C\u7B49\u5BF9\u5F85\u3002",
+    batchBackupKeepName: "\u5FEB\u7167\u4FDD\u7559\u4EFD\u6570",
+    batchBackupKeepDesc: "\u8D85\u51FA\u4EFD\u6570\u7684\u65E7\u5FEB\u7167\u4F1A\u88AB\u81EA\u52A8\u6E05\u7406\u3002\u5141\u8BB8\u8303\u56F4 1\u201320\u3002",
+    // ---- v1.7.0 批量操作：右键菜单 ----
+    menuBatchEncFile: "AI Alias\uFF1A\u771F\u5B9E\u540D \u2192 \u4EE3\u53F7",
+    menuBatchDecFile: "AI Alias\uFF1A\u4EE3\u53F7 \u2192 \u771F\u5B9E\u540D",
+    menuBatchEncFolder: "AI Alias\uFF1A\u6279\u91CF\u52A0\u5BC6\uFF08%d \u7BC7\u7B14\u8BB0\uFF09",
+    menuBatchDecFolder: "AI Alias\uFF1A\u6279\u91CF\u89E3\u5BC6\uFF08%d \u7BC7\u7B14\u8BB0\uFF09",
+    menuBatchEncSel: "AI Alias\uFF1A\u6279\u91CF\u52A0\u5BC6\uFF08\u5DF2\u9009 %d \u7BC7\uFF09",
+    menuBatchDecSel: "AI Alias\uFF1A\u6279\u91CF\u89E3\u5BC6\uFF08\u5DF2\u9009 %d \u7BC7\uFF09",
+    // ---- v1.7.0 批量操作：运行提示 ----
+    batchScanning: "\u6B63\u5728\u626B\u63CF\u2026 %a / %b",
+    batchWriting: "\u6B63\u5728\u5199\u5165\u2026 %a / %b",
+    batchNoTargets: "\u6240\u9009\u8303\u56F4\u5185\u6CA1\u6709 Markdown \u7B14\u8BB0",
+    batchDone: "\u5DF2\u5904\u7406 %f \u7BC7 \xB7 \u66FF\u6362 %n \u5904",
+    batchDoneFail: " \xB7 \u5931\u8D25 %d",
+    batchDoneConflict: " \xB7 \u8DF3\u8FC7 %d \u7BC7\uFF08\u626B\u63CF\u540E\u88AB\u6539\u52A8\uFF09",
+    batchDoneUndoable: " \xB7 \u53EF\u64A4\u9500",
+    backupFail: "\u5FEB\u7167\u521B\u5EFA\u5931\u8D25\uFF0C\u672A\u5199\u5165\u4EFB\u4F55\u6587\u4EF6\uFF1A",
+    // ---- v1.7.0 批量操作：预览弹窗 ----
+    bpEncTitle: "\u6279\u91CF\u52A0\u5BC6\u9884\u89C8",
+    bpDecTitle: "\u6279\u91CF\u89E3\u5BC6\u9884\u89C8",
+    bpTarget: "\u76EE\u6807\uFF1A%s",
+    bpRecursive: "\uFF08\u542B\u5B50\u6587\u4EF6\u5939\uFF09",
+    bpSummary: "\u626B\u63CF %s \u7BC7 \u2192 \u5C06\u4FEE\u6539 %c \u7BC7 \xB7 \u5171 %n \u5904",
+    bpBreakdown: "\u542B\u4EE3\u53F7 %w \xB7 \u88F8\u4EE3\u53F7 %b \xB7 \u6807\u9898 %t",
+    bpPolicyHint: "\u88F8\u4EE3\u53F7\u9ED8\u8BA4\u5168\u90E8\u5217\u51FA\u3001\u9010\u6761\u52FE\u9009\u786E\u8BA4\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u8FD8\u539F\u3002",
+    bpSkipBare: "\u8DF3\u8FC7\u88F8\u4EE3\u53F7\uFF08\u4EC5\u8FD8\u539F\u5E26\u524D\u540E\u7F00\u7684\u4EE3\u53F7\uFF09",
+    bpRenameTitles: "\u540C\u65F6\u8FD8\u539F\u7B14\u8BB0\u6807\u9898\uFF08\u4F1A\u91CD\u547D\u540D\u6587\u4EF6\uFF09",
+    bpRenameWarn: "\u91CD\u547D\u540D\u4F1A\u5F71\u54CD\u5176\u5B83\u7B14\u8BB0\u6307\u5411\u5B83\u7684\u94FE\u63A5\uFF0C\u4E14\u65E0\u6CD5\u7528 Ctrl/Cmd+Z \u64A4\u9500\u3002",
+    bpNoChange: "\u65E0\u53D8\u5316",
+    bpBadgeWrapped: "\u542B %d",
+    bpBadgeBare: "\u88F8 %d",
+    bpBadgeTitle: "\u6807\u9898 %d",
+    bpBadgeReal: "%d \u5904",
+    bpSecWrapped: "\u5E26\u524D\u540E\u7F00\u7684\u4EE3\u53F7\uFF08\u5FC5\u5B9A\u8FD8\u539F\uFF09",
+    bpSecBare: "\u88F8\u4EE3\u53F7\uFF08\u52FE\u9009\u8981\u8FD8\u539F\u7684\uFF09",
+    bpSecTitle: "\u7B14\u8BB0\u6807\u9898",
+    bpSecReal: "\u5C06\u88AB\u66FF\u6362\u4E3A\u4EE3\u53F7\u7684\u771F\u5B9E\u540D",
+    bpWarn: "\u6B64\u64CD\u4F5C\u76F4\u63A5\u5199\u5165\u78C1\u76D8\uFF0C\u7B14\u8BB0\u5185\u64A4\u9500\uFF08Ctrl/Cmd+Z\uFF09\u65E0\u6548\u3002",
+    bpWarnBackup: "\u5DF2\u81EA\u52A8\u521B\u5EFA\u5FEB\u7167\uFF0C\u53EF\u7528\u300C\u64A4\u9500\u4E0A\u6B21\u6279\u91CF\u64CD\u4F5C\u300D\u56DE\u6EDA\u3002",
+    bpWarnNoBackup: "\u8BBE\u7F6E\u4E2D\u5DF2\u5173\u95ED\u5FEB\u7167\uFF0C\u672C\u6B21\u64CD\u4F5C\u65E0\u6CD5\u56DE\u6EDA\u3002",
+    bpWarnMany: "\u5C06\u4FEE\u6539\u8D85\u8FC7 %d \u7BC7\u7B14\u8BB0\uFF0C\u6267\u884C\u524D\u8BF7\u4ED4\u7EC6\u6838\u5BF9\u3002",
+    bpSelAll: "\u5168\u9009",
+    bpSelNone: "\u5168\u4E0D\u9009",
+    bpRun: "\u6267\u884C\uFF08%d \u7BC7\uFF09",
+    bpConfirmMany: "\u5C06\u4FEE\u6539\u5E76\u5199\u5165 %d \u7BC7\u7B14\u8BB0\uFF0C\u786E\u5B9A\u7EE7\u7EED\uFF1F",
+    bpEmpty: "\u626B\u63CF\u8303\u56F4\u5185\u6CA1\u6709\u4EFB\u4F55\u6620\u5C04\u547D\u4E2D\u3002",
+    // ---- v1.7.0 批量操作：撤销 ----
+    cmdUndo: "AI Alias\uFF1A\u64A4\u9500\u4E0A\u6B21\u6279\u91CF\u64CD\u4F5C\uFF08Undo last batch operation\uFF09",
+    undoNone: "\u6CA1\u6709\u627E\u5230\u6279\u91CF\u64CD\u4F5C\u5FEB\u7167",
+    undoConfirm: "\u8981\u56DE\u6EDA %t \u7684\u6279\u91CF%d\u5417\uFF1F\u5C06\u6062\u590D %n \u7BC7\u7B14\u8BB0\u3002",
+    undoDirEnc: "\u52A0\u5BC6",
+    undoDirDec: "\u89E3\u5BC6",
+    undoRun: "\u56DE\u6EDA",
+    undoDone: "\u5DF2\u56DE\u6EDA %n \u7BC7\u7B14\u8BB0",
+    undoSkipped: " \xB7 \u8DF3\u8FC7 %n \u7BC7\uFF08\u4E4B\u540E\u88AB\u624B\u5DE5\u6539\u52A8\uFF09",
+    undoMissing: " \xB7 %n \u7BC7\u7B14\u8BB0\u5DF2\u4E0D\u5B58\u5728",
+    undoFail: "\u64A4\u9500\u5931\u8D25\uFF1A",
     // 预设类别含义（图例）
     cat_platform: "\u5E73\u53F0",
     cat_resource: "\u8D44\u6E90",
@@ -308,6 +461,60 @@ function isValidCode(code) {
 }
 function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function resolveOverlaps(hits) {
+  const sorted = [...hits].sort((a, b) => a.start - b.start || b.end - b.start - (a.end - a.start));
+  const out = [];
+  let lastEnd = -1;
+  for (const h of sorted) {
+    if (h.start >= lastEnd) {
+      out.push(h);
+      lastEnd = h.end;
+    }
+  }
+  return out;
+}
+function spliceHits(text, hits, repl) {
+  const order = hits.map((h, i) => ({ h, i })).sort((a, b) => a.h.start - b.h.start);
+  let out = "";
+  let cursor = 0;
+  for (const { h, i } of order) {
+    if (h.start < cursor) continue;
+    const r = repl(i);
+    out += text.slice(cursor, h.start);
+    out += r === null ? text.slice(h.start, h.end) : r;
+    cursor = h.end;
+  }
+  return out + text.slice(cursor);
+}
+function frontmatterLength(text) {
+  if (!text.startsWith("---")) return 0;
+  const m = /^---[^\S\n]*\r?\n[\s\S]*?\r?\n---[^\S\n]*(\r?\n|$)/.exec(text);
+  return m ? m[0].length : 0;
+}
+function hashStr(s) {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(16);
+}
+function stamp(d) {
+  const p = (n) => String(n).padStart(2, "0");
+  return String(d.getFullYear()) + p(d.getMonth() + 1) + p(d.getDate()) + "-" + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+}
+function prettyStamp(ts) {
+  if (!/^\d{8}-\d{6}$/.test(ts)) return ts;
+  return ts.slice(0, 4) + "-" + ts.slice(4, 6) + "-" + ts.slice(6, 8) + " " + ts.slice(9, 11) + ":" + ts.slice(11, 13) + ":" + ts.slice(13, 15);
+}
+function yieldToUi() {
+  return new Promise((resolve) => window.setTimeout(resolve, 0));
+}
+function sanitizeFileName(s) {
+  const noCtrl = Array.from(s).filter((ch) => (ch.codePointAt(0) ?? 0) >= 32).join("");
+  const cleaned = noCtrl.replace(/[\\/:*?"<>|]/g, "_").replace(/^\.+/, "").replace(/[.\s]+$/, "");
+  return cleaned.length > 0 ? cleaned : null;
 }
 var ConfirmDialog = class extends import_obsidian.Modal {
   constructor(app, message, confirmText, cancelText, onConfirm, hideCancel = false) {
@@ -630,9 +837,7 @@ var BareCodeConfirmModal = class extends import_obsidian.Modal {
     if (tail) ctx.createSpan({ text: tail });
   }
   sanitizeFileName(s) {
-    const noCtrl = Array.from(s).filter((ch) => ch.codePointAt(0) >= 32).join("");
-    const cleaned = noCtrl.replace(/[\\/:*?"<>|]/g, "_").replace(/^\.+/, "").replace(/[.\s]+$/, "");
-    return cleaned.length > 0 ? cleaned : null;
+    return sanitizeFileName(s);
   }
   setAll(v) {
     this.checks = this.checks.map(() => v);
@@ -701,6 +906,306 @@ var BareCodeConfirmModal = class extends import_obsidian.Modal {
     this.close();
   }
 };
+var DETAIL_CAP = 30;
+var BatchPreviewModal = class extends import_obsidian.Modal {
+  constructor(app, plugin, direction, label, scans) {
+    super(app);
+    this.plugin = plugin;
+    this.direction = direction;
+    this.label = label;
+    this.scans = scans;
+    this.skipBare = plugin.settings.batchBareCodePolicy === "skip";
+    this.renameTitles = plugin.settings.batchRenameTitles;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    const t = (k) => this.plugin.t(k);
+    this.modalEl.addClass("ai-bpmodal");
+    this.titleEl.setText(this.direction === "encrypt" ? t("bpEncTitle") : t("bpDecTitle"));
+    contentEl.createEl("p", { cls: "ai-sub", text: t("bpTarget").replace("%s", this.label) });
+    const sum = contentEl.createEl("div", { cls: "ai-bpsum" });
+    this.summaryEl = sum.createEl("div", { cls: "ai-bpsum-main" });
+    this.breakdownEl = sum.createEl("div", { cls: "ai-bpsum-sub" });
+    if (this.direction === "decrypt") {
+      const pol = contentEl.createEl("div", { cls: "ai-bppolicy" });
+      pol.createEl("div", { cls: "ai-bppolicy-hint", text: t("bpPolicyHint") });
+      const l1 = pol.createEl("label", { cls: "ai-bpcheck" });
+      const c1 = l1.createEl("input", { type: "checkbox" });
+      c1.checked = this.skipBare;
+      l1.createSpan({ text: t("bpSkipBare") });
+      c1.addEventListener("change", () => {
+        this.skipBare = c1.checked;
+        this.renderList();
+        this.refresh();
+      });
+      const l2 = pol.createEl("label", { cls: "ai-bpcheck" });
+      const c2 = l2.createEl("input", { type: "checkbox" });
+      c2.checked = this.renameTitles;
+      l2.createSpan({ text: t("bpRenameTitles") });
+      c2.addEventListener("change", () => {
+        this.renameTitles = c2.checked;
+        this.renderList();
+        this.refresh();
+      });
+      pol.createEl("div", { cls: "ai-bppolicy-warn", text: t("bpRenameWarn") });
+    }
+    this.listEl = contentEl.createEl("div", { cls: "ai-bplist" });
+    this.warnEl = contentEl.createEl("p", { cls: "ai-help ai-help-warn" });
+    const foot = contentEl.createEl("div", { cls: "ai-foot" });
+    foot.createEl("button", { text: t("bpSelAll") }).addEventListener("click", () => this.setAll(true));
+    foot.createEl("button", { text: t("bpSelNone") }).addEventListener("click", () => this.setAll(false));
+    foot.createEl("button", { text: t("cancel") }).addEventListener("click", () => this.close());
+    this.runBtn = foot.createEl("button", { text: "", cls: "mod-cta" });
+    this.runBtn.addEventListener("click", () => this.confirmRun());
+    this.renderList();
+    this.refresh();
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+  // ---- derived state ----
+  hasPotential(s) {
+    if (this.direction === "encrypt") return s.realHits.length > 0;
+    if (s.wrappedHits.length > 0) return true;
+    if (!this.skipBare && s.bareHits.length > 0) return true;
+    if (this.renameTitles && s.titleHits.length > 0) return true;
+    return false;
+  }
+  counts(s) {
+    if (this.direction === "encrypt") {
+      const n = s.realHits.length;
+      return { w: n, b: 0, ti: 0, n };
+    }
+    const w = s.wrappedHits.length;
+    const b = this.skipBare ? 0 : s.bareChecks.filter(Boolean).length;
+    const ti = this.renameTitles ? s.titleChecks.filter(Boolean).length : 0;
+    return { w, b, ti, n: w + b + ti };
+  }
+  // ---- rendering ----
+  renderList() {
+    const t = (k) => this.plugin.t(k);
+    this.listEl.empty();
+    if (this.scans.length === 0) {
+      this.listEl.createEl("div", { cls: "ai-bpempty", text: t("bpEmpty") });
+      return;
+    }
+    for (const s of this.scans) {
+      const active = this.hasPotential(s);
+      if (!active) s.selected = false;
+      const item = this.listEl.createEl("div", { cls: "ai-bpitem" });
+      item.toggleClass("is-dim", !active);
+      const row = item.createEl("div", { cls: "ai-bprow" });
+      const cb = row.createEl("input", { type: "checkbox" });
+      cb.checked = s.selected;
+      cb.disabled = !active;
+      cb.addEventListener("change", () => {
+        s.selected = cb.checked;
+        this.refresh();
+      });
+      const main = row.createEl("div", { cls: "ai-bpmain" });
+      main.createEl("span", { cls: "ai-bppath", text: s.path });
+      const badges = main.createEl("span", { cls: "ai-bpbadges" });
+      this.renderBadges(badges, s, active);
+      main.createEl("span", { cls: "ai-bparrow", text: active ? s.expanded ? "\u25BE" : "\u25B8" : "" });
+      if (active) {
+        main.addClass("is-clickable");
+        main.addEventListener("click", () => {
+          s.expanded = !s.expanded;
+          this.renderList();
+        });
+      }
+      if (active && s.expanded) this.renderDetail(item, s);
+    }
+  }
+  renderBadges(parent, s, active) {
+    const t = (k) => this.plugin.t(k);
+    if (!active) {
+      parent.createEl("span", { cls: "ai-bpbadge is-none", text: t("bpNoChange") });
+      return;
+    }
+    if (this.direction === "encrypt") {
+      parent.createEl("span", { cls: "ai-bpbadge", text: t("bpBadgeReal").replace("%d", String(s.realHits.length)) });
+      return;
+    }
+    if (s.wrappedHits.length > 0) {
+      parent.createEl("span", { cls: "ai-bpbadge", text: t("bpBadgeWrapped").replace("%d", String(s.wrappedHits.length)) });
+    }
+    if (!this.skipBare && s.bareHits.length > 0) {
+      parent.createEl("span", { cls: "ai-bpbadge is-bare", text: t("bpBadgeBare").replace("%d", String(s.bareHits.length)) });
+    }
+    if (this.renameTitles && s.titleHits.length > 0) {
+      parent.createEl("span", { cls: "ai-bpbadge is-title", text: t("bpBadgeTitle").replace("%d", String(s.titleHits.length)) });
+    }
+  }
+  renderDetail(parent, s) {
+    const t = (k) => this.plugin.t(k);
+    const box = parent.createEl("div", { cls: "ai-bpdetail" });
+    if (this.direction === "encrypt") {
+      this.renderSection(box, t("bpSecReal"), s.realHits, s.original, null);
+      return;
+    }
+    if (s.wrappedHits.length > 0) {
+      this.renderSection(box, t("bpSecWrapped"), s.wrappedHits, s.original, null);
+    }
+    if (!this.skipBare && s.bareHits.length > 0) {
+      this.renderSection(box, t("bpSecBare"), s.bareHits, s.decrypted, s.bareChecks);
+    }
+    if (this.renameTitles && s.titleHits.length > 0) {
+      this.renderSection(box, t("bpSecTitle"), s.titleHits, s.file.basename, s.titleChecks);
+    }
+  }
+  renderSection(box, title, hits, source, checks) {
+    box.createEl("div", { cls: "ai-bpsec", text: title });
+    const list = box.createEl("div", { cls: "ai-bphits" });
+    const shown = Math.min(hits.length, DETAIL_CAP);
+    for (let i = 0; i < shown; i++) {
+      const h = hits[i];
+      const line = list.createEl("div", { cls: "ai-bphit" });
+      if (checks) {
+        const cb = line.createEl("input", { type: "checkbox" });
+        cb.checked = checks[i];
+        cb.addEventListener("change", () => {
+          checks[i] = cb.checked;
+          this.refresh();
+        });
+      } else {
+        line.createEl("span", { cls: "ai-bpfix", text: "\u2022" });
+      }
+      const body = line.createEl("div", { cls: "ai-barebody" });
+      const head = body.createEl("div", { cls: "ai-barecode" });
+      if (this.direction === "encrypt") {
+        head.createEl("span", { text: h.real, cls: "ai-real" });
+        head.createEl("span", { text: "  \u2192  ", cls: "ai-arrow" });
+        head.createEl("span", { text: this.plugin.wrap(h.code), cls: "ai-code" });
+      } else {
+        head.createEl("span", { text: h.code, cls: "ai-code" });
+        head.createEl("span", { text: "  \u2192  ", cls: "ai-arrow" });
+        head.createEl("span", { text: h.real, cls: "ai-real" });
+      }
+      head.createEl("span", { text: " (" + this.catLabel(h.category) + ")", cls: "ai-bpcat" });
+      this.ctxLine(body, source, h);
+    }
+    if (hits.length > shown) {
+      list.createEl("div", { cls: "ai-bpmore", text: "\u2026 +" + String(hits.length - shown) });
+    }
+  }
+  catLabel(id) {
+    const cat = this.plugin.categoryById(id);
+    return cat ? cat.name : this.plugin.t("noCat");
+  }
+  ctxLine(parent, source, h) {
+    const before = source.slice(Math.max(0, h.start - 20), h.start);
+    const after = source.slice(h.end, Math.min(source.length, h.end + 20));
+    const ctx = parent.createEl("div", { cls: "ai-barectx" });
+    if (h.start > 20) ctx.createSpan({ text: "\u2026" });
+    ctx.createSpan({ text: before });
+    ctx.createSpan({ text: source.slice(h.start, h.end), cls: "ai-hl" });
+    ctx.createSpan({ text: after });
+    if (h.end + 20 < source.length) ctx.createSpan({ text: "\u2026" });
+  }
+  refresh() {
+    const t = (k) => this.plugin.t(k);
+    let files = 0;
+    let n = 0;
+    let w = 0;
+    let b = 0;
+    let ti = 0;
+    for (const s of this.scans) {
+      if (!s.selected || !this.hasPotential(s)) continue;
+      const c = this.counts(s);
+      if (c.n === 0) continue;
+      files++;
+      n += c.n;
+      w += c.w;
+      b += c.b;
+      ti += c.ti;
+    }
+    this.summaryEl.setText(
+      t("bpSummary").replace("%s", String(this.scans.length)).replace("%c", String(files)).replace("%n", String(n))
+    );
+    if (this.direction === "decrypt") {
+      this.breakdownEl.setText(
+        t("bpBreakdown").replace("%w", String(w)).replace("%b", String(b)).replace("%t", String(ti))
+      );
+      this.breakdownEl.toggleClass("is-hidden", false);
+    } else {
+      this.breakdownEl.toggleClass("is-hidden", true);
+    }
+    this.warnEl.empty();
+    this.warnEl.createSpan({ text: t("bpWarn") });
+    this.warnEl.createEl("br");
+    this.warnEl.createSpan({
+      text: this.plugin.settings.batchBackupEnabled ? t("bpWarnBackup") : t("bpWarnNoBackup")
+    });
+    const many = files > BATCH_MANY;
+    if (many) {
+      this.warnEl.createEl("br");
+      this.warnEl.createSpan({ text: t("bpWarnMany").replace("%d", String(BATCH_MANY)), cls: "ai-bpdanger" });
+    }
+    this.warnEl.toggleClass("ai-help-danger", many);
+    this.runBtn.setText(t("bpRun").replace("%d", String(files)));
+    this.runBtn.disabled = files === 0;
+  }
+  setAll(v) {
+    for (const s of this.scans) if (this.hasPotential(s)) s.selected = v;
+    this.renderList();
+    this.refresh();
+  }
+  // ---- run ----
+  buildPlans() {
+    const plans = [];
+    for (const s of this.scans) {
+      if (!s.selected || !this.hasPotential(s)) continue;
+      const c = this.counts(s);
+      if (c.n === 0) continue;
+      let after;
+      let renameTo;
+      if (this.direction === "encrypt") {
+        after = spliceHits(s.original, s.realHits, (i) => this.plugin.wrap(s.realHits[i].code));
+      } else {
+        after = s.decrypted;
+        if (!this.skipBare && s.bareHits.length > 0) {
+          after = spliceHits(s.decrypted, s.bareHits, (i) => s.bareChecks[i] ? s.bareHits[i].real : null);
+        }
+        if (this.renameTitles && s.titleHits.some((_h, i) => s.titleChecks[i])) {
+          const built = spliceHits(
+            s.file.basename,
+            s.titleHits,
+            (i) => s.titleChecks[i] ? sanitizeFileName(s.titleHits[i].real) : null
+          );
+          if (built.length > 0 && built !== s.file.basename) {
+            const dir = s.file.parent && s.file.parent.path !== "/" ? s.file.parent.path : "";
+            const ext = s.file.extension ? "." + s.file.extension : "";
+            renameTo = (dir ? dir + "/" : "") + built + ext;
+          }
+        }
+      }
+      if (after === s.original && renameTo === void 0) continue;
+      plans.push({ file: s.file, before: s.original, after, count: c.n, renameTo });
+    }
+    return plans;
+  }
+  confirmRun() {
+    const t = (k) => this.plugin.t(k);
+    const plans = this.buildPlans();
+    if (plans.length === 0) return;
+    const go = () => {
+      this.close();
+      void this.plugin.executeBatch(this.direction, plans, this.label);
+    };
+    if (plans.length > BATCH_MANY) {
+      new ConfirmDialog(
+        this.app,
+        t("bpConfirmMany").replace("%d", String(plans.length)),
+        t("bpRun").replace("%d", String(plans.length)),
+        t("cancel"),
+        go
+      ).open();
+      return;
+    }
+    go();
+  }
+};
 var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
@@ -723,7 +1228,6 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     new import_obsidian.Setting(containerEl).setName(t("language")).setDesc(t("languageDesc")).addDropdown(
       (d) => d.addOption("en", "English").addOption("zh", "\u4E2D\u6587").setValue(this.plugin.settings.language).onChange((v) => {
         this.plugin.settings.language = v;
-        this.plugin.registerCommands();
         void this.plugin.save();
         this.display();
       })
@@ -748,6 +1252,45 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
       })
     ).addButton(
       (btn) => btn.setButtonText(t("importBtn")).onClick(() => new ImportModal(this.app, this.plugin, this).open())
+    );
+    new import_obsidian.Setting(containerEl).setName(t("batchHeading")).setHeading();
+    new import_obsidian.Setting(containerEl).setName(t("batchIncludeSub")).setDesc(t("batchIncludeSubDesc")).addToggle(
+      (tg) => tg.setValue(this.plugin.settings.batchIncludeSubfolders).onChange((v) => {
+        this.plugin.settings.batchIncludeSubfolders = v;
+        void this.plugin.save();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName(t("batchBarePolicy")).setDesc(t("batchBarePolicyDesc")).addDropdown(
+      (d) => d.addOption("confirmAll", t("batchBarePolicyConfirm")).addOption("skip", t("batchBarePolicySkip")).setValue(this.plugin.settings.batchBareCodePolicy).onChange((v) => {
+        this.plugin.settings.batchBareCodePolicy = v === "skip" ? "skip" : "confirmAll";
+        void this.plugin.save();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName(t("batchRename")).setDesc(t("batchRenameDesc")).addToggle(
+      (tg) => tg.setValue(this.plugin.settings.batchRenameTitles).onChange((v) => {
+        this.plugin.settings.batchRenameTitles = v;
+        void this.plugin.save();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName(t("batchSkipFm")).setDesc(t("batchSkipFmDesc")).addToggle(
+      (tg) => tg.setValue(this.plugin.settings.batchSkipFrontmatter).onChange((v) => {
+        this.plugin.settings.batchSkipFrontmatter = v;
+        void this.plugin.save();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName(t("batchBackup")).setDesc(t("batchBackupDesc")).addToggle(
+      (tg) => tg.setValue(this.plugin.settings.batchBackupEnabled).onChange((v) => {
+        this.plugin.settings.batchBackupEnabled = v;
+        void this.plugin.save();
+      })
+    );
+    new import_obsidian.Setting(containerEl).setName(t("batchBackupKeepName")).setDesc(t("batchBackupKeepDesc")).addText(
+      (tc) => tc.setValue(String(this.plugin.settings.batchBackupKeep)).onChange((v) => {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return;
+        this.plugin.settings.batchBackupKeep = Math.min(20, Math.max(1, Math.floor(n)));
+        void this.plugin.save();
+      })
     );
     new import_obsidian.Setting(containerEl).setName(t("catTitle")).setHeading();
     this.catBarEl = containerEl.createEl("div", { cls: "ai-catbar" });
@@ -899,6 +1442,7 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     inp.value = v;
     void this.plugin.save();
     new import_obsidian.Notice(t("catPrefixKept"));
+    this.refreshFilterOptions();
     this.renderTable();
   }
   addCategory(nIn, pIn) {
@@ -948,9 +1492,14 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     this.renderTable();
   }
   refreshFilterOptions() {
-    if (!this.filterSel) return;
-    const cur = this.filterSel.value;
-    this.fillCatSelect(this.filterSel, true, cur, true);
+    if (this.filterSel) {
+      const cur = this.filterSel.value;
+      this.fillCatSelect(this.filterSel, true, cur, true);
+    }
+    if (this.addCatEl) {
+      const cur = this.addCatEl.value;
+      this.fillCatSelect(this.addCatEl, true, cur);
+    }
   }
   // ---------- uncategorized notice ----------
   renderUncatNotice() {
@@ -1398,13 +1947,21 @@ var AIAliasPlugin = class extends import_obsidian.Plugin {
         );
       })
     );
+    this.registerEvent(
+      this.app.workspace.on("file-menu", (menu, file) => {
+        this.addBatchMenu(menu, [file], false);
+      })
+    );
+    try {
+      this.registerEvent(
+        this.app.workspace.on("files-menu", (menu, files) => {
+          this.addBatchMenu(menu, files, true);
+        })
+      );
+    } catch {
+    }
   }
   registerCommands() {
-    const ids = ["encrypt", "decrypt", "copy-ai-prefix"];
-    const appCommands = this.app.commands;
-    for (const id of ids) {
-      appCommands.removeCommand(this.manifest.id + ":" + id);
-    }
     this.addCommand({
       id: "encrypt",
       name: this.t("cmdEncrypt"),
@@ -1425,6 +1982,354 @@ var AIAliasPlugin = class extends import_obsidian.Plugin {
         void navigator.clipboard.writeText(text).then(() => new import_obsidian.Notice(this.t("prefixCopied"))).catch((e) => new import_obsidian.Notice(this.t("copyFail") + (e instanceof Error ? e.message : String(e))));
       }
     });
+    this.addCommand({
+      id: "undo-last-batch",
+      name: this.t("cmdUndo"),
+      callback: () => {
+        void this.undoLastBatch();
+      }
+    });
+  }
+  // ================= v1.7.0 batch operations =================
+  isBatchTarget(f) {
+    if (f.extension !== "md") return false;
+    const p = f.path;
+    return !p.startsWith(".obsidian/") && !p.startsWith(".trash/");
+  }
+  mdFilesUnder(folder) {
+    const out = [];
+    if (this.settings.batchIncludeSubfolders) {
+      import_obsidian.Vault.recurseChildren(folder, (af) => {
+        if (af instanceof import_obsidian.TFile && this.isBatchTarget(af)) out.push(af);
+      });
+    } else {
+      for (const c of folder.children) {
+        if (c instanceof import_obsidian.TFile && this.isBatchTarget(c)) out.push(c);
+      }
+    }
+    return out;
+  }
+  collectTargets(items) {
+    const map = /* @__PURE__ */ new Map();
+    for (const it of items) {
+      if (it instanceof import_obsidian.TFile) {
+        if (this.isBatchTarget(it)) map.set(it.path, it);
+      } else if (it instanceof import_obsidian.TFolder) {
+        for (const f of this.mdFilesUnder(it)) map.set(f.path, f);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.path.localeCompare(b.path));
+  }
+  addBatchMenu(menu, items, multi) {
+    const singleFile = !multi && items.length === 1 && items[0] instanceof import_obsidian.TFile;
+    if (singleFile && !this.isBatchTarget(items[0])) return;
+    const targets = this.collectTargets(items);
+    const n = targets.length;
+    if (multi && n === 0) return;
+    let encName;
+    let decName;
+    let label;
+    if (singleFile) {
+      encName = this.t("menuBatchEncFile");
+      decName = this.t("menuBatchDecFile");
+      label = items[0].path;
+    } else if (multi) {
+      encName = this.t("menuBatchEncSel").replace("%d", String(n));
+      decName = this.t("menuBatchDecSel").replace("%d", String(n));
+      label = items.map((f) => f.name).slice(0, 3).join(", ") + (items.length > 3 ? " \u2026" : "");
+    } else {
+      encName = this.t("menuBatchEncFolder").replace("%d", String(n));
+      decName = this.t("menuBatchDecFolder").replace("%d", String(n));
+      const fp = items[0].path === "/" ? this.app.vault.getName() : items[0].path + "/";
+      label = fp + (this.settings.batchIncludeSubfolders ? this.t("bpRecursive") : "");
+    }
+    const add = (title, icon, dir) => {
+      menu.addItem((item) => {
+        item.setTitle(title).setIcon(icon).setSection("ai-alias");
+        if (n === 0) {
+          item.setDisabled(true);
+          return;
+        }
+        item.onClick(() => {
+          void this.startBatch(targets, dir, label);
+        });
+      });
+    };
+    add(encName, "lock", "encrypt");
+    add(decName, "unlock", "decrypt");
+  }
+  // ---- scanning (read only) ----
+  scanRealHits(text, base) {
+    const hits = [];
+    for (const m of this.settings.mappings) {
+      if (!m.real) continue;
+      let idx = text.indexOf(m.real);
+      while (idx !== -1) {
+        hits.push({
+          start: base + idx,
+          end: base + idx + m.real.length,
+          code: m.code,
+          real: m.real,
+          category: m.category ?? null
+        });
+        idx = text.indexOf(m.real, idx + m.real.length);
+      }
+    }
+    return resolveOverlaps(hits);
+  }
+  scanWrappedHits(text) {
+    const hits = [];
+    for (const m of this.settings.mappings) {
+      const token = this.wrap(m.code);
+      if (!token) continue;
+      let idx = text.indexOf(token);
+      while (idx !== -1) {
+        hits.push({
+          start: idx,
+          end: idx + token.length,
+          code: m.code,
+          real: m.real,
+          category: m.category ?? null
+        });
+        idx = text.indexOf(token, idx + token.length);
+      }
+    }
+    return resolveOverlaps(hits);
+  }
+  toCodeHits(hits) {
+    const byCode = /* @__PURE__ */ new Map();
+    for (const m of this.settings.mappings) byCode.set(m.code, m);
+    return hits.map((h) => ({
+      start: h.start,
+      end: h.end,
+      code: h.code,
+      real: h.real,
+      category: byCode.get(h.code)?.category ?? null
+    }));
+  }
+  scanOne(file, content, direction) {
+    const scan = {
+      file,
+      path: file.path,
+      original: content,
+      realHits: [],
+      wrappedHits: [],
+      decrypted: content,
+      bareHits: [],
+      titleHits: [],
+      selected: true,
+      expanded: false,
+      bareChecks: [],
+      titleChecks: []
+    };
+    if (direction === "encrypt") {
+      const skip = this.settings.batchSkipFrontmatter ? frontmatterLength(content) : 0;
+      scan.realHits = this.scanRealHits(content.slice(skip), skip);
+    } else {
+      scan.wrappedHits = this.scanWrappedHits(content);
+      scan.decrypted = this.decrypt(content);
+      scan.bareHits = this.toCodeHits(this.scanBareCodes(scan.decrypted));
+      scan.titleHits = this.toCodeHits(this.scanBareCodes(file.basename));
+      scan.bareChecks = scan.bareHits.map(() => false);
+      scan.titleChecks = scan.titleHits.map(() => false);
+    }
+    return scan;
+  }
+  async startBatch(files, direction, label) {
+    if (this.settings.mappings.length === 0) {
+      new import_obsidian.Notice(this.t(direction === "encrypt" ? "emptyEncrypt" : "emptyDecrypt"));
+      return;
+    }
+    if (files.length === 0) {
+      new import_obsidian.Notice(this.t("batchNoTargets"));
+      return;
+    }
+    const notice = new import_obsidian.Notice(this.progressText("batchScanning", 0, files.length), 0);
+    const scans = [];
+    try {
+      for (let i = 0; i < files.length; i++) {
+        const content = await this.app.vault.cachedRead(files[i]);
+        scans.push(this.scanOne(files[i], content, direction));
+        if ((i + 1) % BATCH_YIELD === 0) {
+          notice.setMessage(this.progressText("batchScanning", i + 1, files.length));
+          await yieldToUi();
+        }
+      }
+    } finally {
+      notice.hide();
+    }
+    new BatchPreviewModal(this.app, this, direction, label, scans).open();
+  }
+  progressText(key, a, b) {
+    return this.t(key).replace("%a", String(a)).replace("%b", String(b));
+  }
+  // ---- snapshot / backup ----
+  backupDir() {
+    const base = this.manifest.dir ?? this.app.vault.configDir + "/plugins/" + this.manifest.id;
+    return base + "/backups";
+  }
+  async writeSnapshot(direction, label, plans) {
+    const ad = this.app.vault.adapter;
+    const dir = this.backupDir();
+    if (!await ad.exists(dir)) await ad.mkdir(dir);
+    const ts = stamp(/* @__PURE__ */ new Date());
+    const snap = {
+      v: SNAPSHOT_VERSION,
+      ts,
+      direction,
+      label,
+      entries: plans.map((p) => ({
+        path: p.file.path,
+        before: p.before,
+        afterHash: hashStr(p.after),
+        renameTo: p.renameTo
+      }))
+    };
+    await ad.write(dir + "/" + ts + ".json", JSON.stringify(snap));
+    await this.pruneSnapshots();
+  }
+  async pruneSnapshots() {
+    const ad = this.app.vault.adapter;
+    const dir = this.backupDir();
+    if (!await ad.exists(dir)) return;
+    const listed = await ad.list(dir);
+    const keep = this.settings.batchBackupKeep;
+    const files = listed.files.filter((f) => f.endsWith(".json")).sort();
+    const extra = files.length - keep;
+    for (let i = 0; i < extra; i++) {
+      try {
+        await ad.remove(files[i]);
+      } catch {
+      }
+    }
+  }
+  // ---- execution ----
+  async executeBatch(direction, plans, label) {
+    if (this.settings.batchBackupEnabled) {
+      try {
+        await this.writeSnapshot(direction, label, plans);
+      } catch (e) {
+        new import_obsidian.Notice(this.t("backupFail") + (e instanceof Error ? e.message : String(e)));
+        return;
+      }
+    }
+    const notice = new import_obsidian.Notice(this.progressText("batchWriting", 0, plans.length), 0);
+    let ok = 0;
+    let repl = 0;
+    let failed = 0;
+    let conflicted = 0;
+    const renames = [];
+    try {
+      for (let i = 0; i < plans.length; i++) {
+        const p = plans[i];
+        try {
+          if (p.after !== p.before) {
+            let clash = false;
+            await this.app.vault.process(p.file, (data) => {
+              if (data !== p.before) {
+                clash = true;
+                return data;
+              }
+              return p.after;
+            });
+            if (clash) {
+              conflicted++;
+            } else {
+              ok++;
+              repl += p.count;
+            }
+          } else {
+            ok++;
+            repl += p.count;
+          }
+          if (p.renameTo) renames.push(p);
+        } catch {
+          failed++;
+        }
+        if ((i + 1) % 10 === 0) {
+          notice.setMessage(this.progressText("batchWriting", i + 1, plans.length));
+          await yieldToUi();
+        }
+      }
+      for (const p of renames) {
+        try {
+          if (p.renameTo) await this.app.fileManager.renameFile(p.file, p.renameTo);
+        } catch {
+          failed++;
+        }
+      }
+    } finally {
+      notice.hide();
+    }
+    let msg = this.t("batchDone").replace("%f", String(ok)).replace("%n", String(repl));
+    if (failed > 0) msg += this.t("batchDoneFail").replace("%d", String(failed));
+    if (conflicted > 0) msg += this.t("batchDoneConflict").replace("%d", String(conflicted));
+    if (this.settings.batchBackupEnabled) msg += this.t("batchDoneUndoable");
+    new import_obsidian.Notice(msg, 8e3);
+  }
+  // ---- undo ----
+  async undoLastBatch() {
+    const ad = this.app.vault.adapter;
+    const dir = this.backupDir();
+    try {
+      if (!await ad.exists(dir)) {
+        new import_obsidian.Notice(this.t("undoNone"));
+        return;
+      }
+      const listed = await ad.list(dir);
+      const cands = listed.files.filter((f) => f.endsWith(".json") && !f.endsWith(".undone.json")).sort();
+      if (cands.length === 0) {
+        new import_obsidian.Notice(this.t("undoNone"));
+        return;
+      }
+      const path = cands[cands.length - 1];
+      const snap = JSON.parse(await ad.read(path));
+      const msg = this.t("undoConfirm").replace("%d", this.t(snap.direction === "encrypt" ? "undoDirEnc" : "undoDirDec")).replace("%t", prettyStamp(snap.ts)).replace("%n", String(snap.entries.length));
+      new ConfirmDialog(this.app, msg, this.t("undoRun"), this.t("cancel"), () => {
+        void this.applyUndo(path, snap);
+      }).open();
+    } catch (e) {
+      new import_obsidian.Notice(this.t("undoFail") + (e instanceof Error ? e.message : String(e)));
+    }
+  }
+  async applyUndo(path, snap) {
+    let done = 0;
+    let skipped = 0;
+    let missing = 0;
+    try {
+      for (const e of snap.entries) {
+        if (!e.renameTo) continue;
+        const af = this.app.vault.getAbstractFileByPath(e.renameTo);
+        if (af instanceof import_obsidian.TFile) {
+          try {
+            await this.app.fileManager.renameFile(af, e.path);
+          } catch {
+          }
+        }
+      }
+      for (const e of snap.entries) {
+        const af = this.app.vault.getAbstractFileByPath(e.path);
+        if (!(af instanceof import_obsidian.TFile)) {
+          missing++;
+          continue;
+        }
+        const cur = await this.app.vault.read(af);
+        if (hashStr(cur) !== e.afterHash) {
+          skipped++;
+          continue;
+        }
+        await this.app.vault.process(af, () => e.before);
+        done++;
+      }
+      await this.app.vault.adapter.rename(path, path.replace(/\.json$/, ".undone.json"));
+    } catch (e) {
+      new import_obsidian.Notice(this.t("undoFail") + (e instanceof Error ? e.message : String(e)));
+      return;
+    }
+    let msg = this.t("undoDone").replace("%n", String(done));
+    if (skipped > 0) msg += this.t("undoSkipped").replace("%n", String(skipped));
+    if (missing > 0) msg += this.t("undoMissing").replace("%n", String(missing));
+    new import_obsidian.Notice(msg, 8e3);
   }
   wrap(code) {
     return this.settings.prefix + code + this.settings.suffix;
@@ -1518,6 +2423,13 @@ var AIAliasPlugin = class extends import_obsidian.Plugin {
     if (!Array.isArray(this.settings.mappings)) this.settings.mappings = [];
     if (!Array.isArray(this.settings.categories)) this.settings.categories = [];
     if (this.settings.language !== "zh") this.settings.language = "en";
+    this.settings.batchIncludeSubfolders = this.settings.batchIncludeSubfolders !== false;
+    this.settings.batchSkipFrontmatter = this.settings.batchSkipFrontmatter !== false;
+    this.settings.batchBackupEnabled = this.settings.batchBackupEnabled !== false;
+    this.settings.batchRenameTitles = this.settings.batchRenameTitles === true;
+    if (this.settings.batchBareCodePolicy !== "skip") this.settings.batchBareCodePolicy = "confirmAll";
+    const keep = Number(this.settings.batchBackupKeep);
+    this.settings.batchBackupKeep = Number.isFinite(keep) ? Math.min(20, Math.max(1, Math.floor(keep))) : 5;
     let migrated = false;
     if (this.settings.categories.length === 0 && this.settings.schemaVersion !== SCHEMA_VERSION) {
       this.settings.categories = this.defaultCategories();
