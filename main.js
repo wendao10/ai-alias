@@ -43,35 +43,57 @@ var STR = {
     prefixDesc: "Left wrapper around the alias. Default [[ renders as an Obsidian link; change to \u3010 or \xAB to avoid that.",
     suffix: "Alias wrap suffix",
     suffixDesc: "Right wrapper around the alias.",
-    addMapping: "Add mapping",
-    addMappingDesc: "Real name \u2192 your alphanumeric alias",
     add: "Add",
     importExport: "Import / Export mappings",
-    importExportDesc: "Export: copy JSON to clipboard (safe, not written to any note). Import: paste JSON from clipboard to overwrite current settings.",
+    importExportDesc: "Export: copy JSON to clipboard (safe, not written to any note). Import: paste JSON from clipboard; choose Clear & insert or Insert.",
     exportBtn: "Export to clipboard",
     importBtn: "Import from clipboard",
-    current: "Current mappings (%d entries)",
+    // CRUD manager
+    mappingTitle: "Mapping table",
+    searchPh: "Search real name or alias\u2026",
+    batchAdd: "Batch add",
+    delSel: "Delete selected",
+    clearAll: "Clear all",
+    addSave: "Save",
+    cancel: "Cancel",
+    thReal: "Real name",
+    thCode: "Alias",
+    actions: "Actions",
+    edit: "Edit",
+    del: "Delete",
     empty: "(empty) Add an entry first.",
-    delete: "Delete",
-    addTitle: "Add Mapping",
-    realName: "Real name (original)",
-    realNameDesc: "The actual sensitive name to mask",
-    realPlaceholder: "e.g. TianShu Project",
-    aliasName: "Alias (letters, digits, underscore)",
-    aliasDesc: "Your custom placeholder code, wrapped with prefix/suffix",
-    aliasPlaceholder: "e.g. PROJ_01",
+    filteredEmpty: "No matches.",
     errEmpty: "Real name and alias cannot be empty",
     errChars: "Alias may only contain letters, digits and underscore",
     errDup: "This alias already exists, choose another",
     added: "Added: ",
+    addedN: "Added %d entries",
+    edited: "Saved changes",
+    delOne: "Deleted 1 entry",
+    delN: "Deleted %d entries",
+    confirmDelSel: "Delete the selected %d entries?",
+    confirmClear: "Clear all %d mappings? This cannot be undone.",
+    cancelClear: "Cancelled",
+    batchTitle: "Batch add mappings",
+    batchFmt: "One per line: real=code (supports = / \u2192 / tab / comma). Blank lines are ignored.",
+    batchSave: "Add",
+    previewWarn: "Skipped: ",
+    dupInBatch: "duplicate in batch",
+    importMergeOk: "Inserted %d new entries",
+    crudNote: "Validation: real and alias cannot be empty; alias only allows A-Z a-z 0-9 _; alias must be unique. Tip: search filters live; click a column header to sort; press Enter in the add form to submit.",
+    // import
     importTitle: "Import Mappings (paste JSON)",
-    importFormat: 'Format: { "prefix":"[[", "suffix":"]]", "mappings":[{ "real":"...", "code":"PROJ_01" }] }. Importing overwrites current settings.',
+    importFormat: 'Format: { "prefix":"[[", "suffix":"]]", "mappings":[{ "real":"...", "code":"PROJ_01" }] }.',
+    overwriteBtn: "Clear & insert",
+    mergeBtn: "Insert",
+    importHelp: "Insert: append imported mappings to your current list; existing codes are not duplicated (your current entries are kept). Clear & insert: clear all current mappings first, then replace with only the imported content (full reset).",
     parseSave: "Parse & Save",
     errEmptyField: "Found empty real name or alias",
     errInvalid: "Alias has invalid chars: ",
     errDuplicate: "Duplicate alias: ",
-    imported: "Imported %d entries",
+    imported: "Cleared and inserted %d entries",
     importFail: "Import failed: ",
+    // commands
     cmdEncrypt: "AI Alias: Convert real names to aliases (selection or whole note)",
     cmdDecrypt: "AI Alias: Convert aliases to real names (selection or whole note)",
     cmdPrefix: "AI Alias: Copy AI prompt prefix (safe, no real names)",
@@ -81,6 +103,19 @@ var STR = {
     emptyDecrypt: "Mapping table is empty",
     encrypted: "Encrypted (selection / whole note)",
     decrypted: "Decrypted (selection / whole note)",
+    // bare-code (unwrapped alias) recovery
+    bareTitle: "Unwrapped alias codes found",
+    bareDesc: "The following %d alias code(s) appear WITHOUT the %p \u2026 %s wrapper, so they were not auto-restored. Check the ones to convert to real names, then click Replace selected.",
+    bareWarn: "Warning: a bare code can look like a normal word. Review the context of each before replacing.",
+    bareSelectAll: "Select all",
+    bareSelectNone: "Clear selection",
+    bareReplace: "Replace selected (%d)",
+    bareContext: "Context",
+    bareBodySection: "In note body",
+    bareTitleSection: "In note title (file name)",
+    bareTitleWarn: "Restoring the title renames the note file and may affect links from other notes to this note. This rename is a file-level operation and cannot be undone with the in-note Undo (Ctrl/Cmd+Z) \u2014 please proceed with caution.",
+    bareTitleRenamed: "Renamed note title",
+    bareTitleSkip: "Skipped %d title entr(y/ies) with invalid file-name characters",
     prefixCopied: "Copied AI prompt prefix to clipboard",
     copyFail: "Copy failed: ",
     promptPrefix: "Note: strings in the form %PXXX%S in the following text are placeholder aliases (e.g. %PPROJ_01%S, %PORG_ABC%S), representing masked real entities. Keep these aliases exactly as-is: do not translate, explain, rewrite, or guess their meaning; if you need to refer to them, keep using the same alias."
@@ -93,35 +128,57 @@ var STR = {
     prefixDesc: "\u5305\u88F9\u4EE3\u53F7\u7684\u5DE6\u7B26\u53F7\u3002\u9ED8\u8BA4 [[ \u4F1A\u88AB Obsidian \u6E32\u67D3\u6210\u94FE\u63A5\uFF0C\u53EF\u6539\u4E3A \u3010 \u6216 \xAB \u907F\u514D\u3002",
     suffix: "\u4EE3\u53F7\u5305\u88F9\u540E\u7F00",
     suffixDesc: "\u5305\u88F9\u4EE3\u53F7\u7684\u53F3\u7B26\u53F7\u3002",
-    addMapping: "\u6DFB\u52A0\u6620\u5C04",
-    addMappingDesc: "\u771F\u5B9E\u540D\u79F0 \u2192 \u4F60\u7684\u5B57\u6BCD\u6570\u5B57\u4EE3\u53F7",
     add: "\u6DFB\u52A0",
     importExport: "\u5BFC\u5165 / \u5BFC\u51FA\u6620\u5C04",
-    importExportDesc: "\u5BFC\u51FA\uFF1A\u590D\u5236 JSON \u5230\u526A\u8D34\u677F\uFF08\u5B89\u5168\uFF0C\u4E0D\u5199\u5165\u4EFB\u4F55\u7B14\u8BB0\uFF09\u3002\u5BFC\u5165\uFF1A\u4ECE\u526A\u8D34\u677F\u7C98\u8D34 JSON \u8986\u76D6\u5F53\u524D\u8BBE\u7F6E\u3002",
+    importExportDesc: "\u5BFC\u51FA\uFF1A\u590D\u5236 JSON \u5230\u526A\u8D34\u677F\uFF08\u5B89\u5168\uFF0C\u4E0D\u5199\u5165\u4EFB\u4F55\u7B14\u8BB0\uFF09\u3002\u5BFC\u5165\uFF1A\u4ECE\u526A\u8D34\u677F\u7C98\u8D34 JSON\uFF0C\u53EF\u9009\u62E9\u6E05\u7A7A\u540E\u63D2\u5165\u6216\u63D2\u5165\u3002",
     exportBtn: "\u5BFC\u51FA\u5230\u526A\u8D34\u677F",
     importBtn: "\u4ECE\u526A\u8D34\u677F\u5BFC\u5165",
-    current: "\u5F53\u524D\u6620\u5C04\u8868\uFF08\u5171 %d \u6761\uFF09",
+    // CRUD manager
+    mappingTitle: "\u6620\u5C04\u8868",
+    searchPh: "\u641C\u7D22\u539F\u6587\u6216\u4EE3\u53F7\u2026",
+    batchAdd: "\u6279\u91CF\u6DFB\u52A0",
+    delSel: "\u5220\u9664\u9009\u4E2D",
+    clearAll: "\u6E05\u7A7A\u5168\u90E8",
+    addSave: "\u4FDD\u5B58",
+    cancel: "\u53D6\u6D88",
+    thReal: "\u539F\u6587",
+    thCode: "\u4EE3\u53F7",
+    actions: "\u64CD\u4F5C",
+    edit: "\u7F16\u8F91",
+    del: "\u5220\u9664",
     empty: "\uFF08\u7A7A\uFF09\u8BF7\u5148\u6DFB\u52A0\u6761\u76EE\u3002",
-    delete: "\u5220\u9664",
-    addTitle: "\u6DFB\u52A0\u6620\u5C04",
-    realName: "\u539F\u6587\uFF08\u771F\u5B9E\u540D\u79F0\uFF09",
-    realNameDesc: "\u9700\u8981\u88AB\u8131\u654F\u7684\u5B9E\u9645\u540D\u79F0",
-    realPlaceholder: "\u5982\uFF1A\u5929\u67A2\u9879\u76EE",
-    aliasName: "\u4EE3\u53F7\uFF08\u5B57\u6BCD\u3001\u6570\u5B57\u3001\u4E0B\u5212\u7EBF\uFF09",
-    aliasDesc: "\u4F60\u81EA\u5B9A\u4E49\u7684\u5360\u4F4D\u4EE3\u53F7\uFF0C\u5C06\u5305\u88F9\u5728\u524D\u540E\u7F00\u4E2D\u4F7F\u7528",
-    aliasPlaceholder: "\u5982\uFF1APROJ_01",
+    filteredEmpty: "\u65E0\u5339\u914D\u7ED3\u679C\u3002",
     errEmpty: "\u539F\u6587\u548C\u4EE3\u53F7\u90FD\u4E0D\u80FD\u4E3A\u7A7A",
     errChars: "\u4EE3\u53F7\u53EA\u80FD\u5305\u542B\u5B57\u6BCD\u3001\u6570\u5B57\u3001\u4E0B\u5212\u7EBF",
     errDup: "\u8BE5\u4EE3\u53F7\u5DF2\u5B58\u5728\uFF0C\u8BF7\u6362\u4E00\u4E2A",
     added: "\u5DF2\u6DFB\u52A0\uFF1A",
+    addedN: "\u5DF2\u6DFB\u52A0 %d \u6761",
+    edited: "\u5DF2\u4FDD\u5B58\u4FEE\u6539",
+    delOne: "\u5DF2\u5220\u9664 1 \u6761",
+    delN: "\u5DF2\u5220\u9664 %d \u6761",
+    confirmDelSel: "\u786E\u5B9A\u5220\u9664\u9009\u4E2D\u7684 %d \u6761\uFF1F",
+    confirmClear: "\u786E\u5B9A\u6E05\u7A7A\u5168\u90E8 %d \u6761\u6620\u5C04\uFF1F\u6B64\u64CD\u4F5C\u4E0D\u53EF\u64A4\u9500\u3002",
+    cancelClear: "\u5DF2\u53D6\u6D88",
+    batchTitle: "\u6279\u91CF\u6DFB\u52A0\u6620\u5C04",
+    batchFmt: "\u6BCF\u884C\u4E00\u6761\uFF0C\u683C\u5F0F\uFF1A\u539F\u6587=\u4EE3\u53F7\uFF08\u652F\u6301 = / \u2192 / \u5236\u8868\u7B26 / \u9017\u53F7\uFF09\u3002\u7A7A\u884C\u5FFD\u7565\u3002",
+    batchSave: "\u6DFB\u52A0",
+    previewWarn: "\u8DF3\u8FC7\uFF1A",
+    dupInBatch: "\u6279\u91CF\u5185\u91CD\u590D",
+    importMergeOk: "\u5DF2\u63D2\u5165 %d \u6761\u65B0\u6620\u5C04",
+    crudNote: "\u6821\u9A8C\u89C4\u5219\uFF1A\u539F\u6587\u4E0E\u4EE3\u53F7\u5747\u4E0D\u53EF\u4E3A\u7A7A\uFF1B\u4EE3\u53F7\u4EC5\u5141\u8BB8 A-Z a-z 0-9 _\uFF1B\u4EE3\u53F7\u5168\u5C40\u552F\u4E00\u3002\u63D0\u793A\uFF1A\u641C\u7D22\u5B9E\u65F6\u7B5B\u9009\uFF1B\u70B9\u51FB\u8868\u5934\u6392\u5E8F\uFF1B\u6DFB\u52A0\u8868\u5355\u5185\u6309\u56DE\u8F66\u63D0\u4EA4\u3002",
+    // import
     importTitle: "\u5BFC\u5165\u6620\u5C04\u8868\uFF08\u7C98\u8D34 JSON\uFF09",
-    importFormat: '\u683C\u5F0F\uFF1A{ "prefix":"[[", "suffix":"]]", "mappings":[{ "real":"...", "code":"PROJ_01" }] }\u3002\u5BFC\u5165\u4F1A\u8986\u76D6\u5F53\u524D\u8BBE\u7F6E\u3002',
+    importFormat: '\u683C\u5F0F\uFF1A{ "prefix":"[[", "suffix":"]]", "mappings":[{ "real":"...", "code":"PROJ_01" }] }\u3002',
+    overwriteBtn: "\u6E05\u7A7A\u540E\u63D2\u5165",
+    mergeBtn: "\u63D2\u5165",
+    importHelp: "\u63D2\u5165\uFF1A\u628A\u5BFC\u5165\u7684\u6620\u5C04\u8FFD\u52A0\u5230\u73B0\u6709\u5217\u8868\uFF0C\u5DF2\u6709\u4EE3\u53F7\u4E0D\u4F1A\u91CD\u590D\u6DFB\u52A0\uFF08\u4FDD\u7559\u4F60\u73B0\u6709\u7684\u6761\u76EE\uFF09\u3002\u6E05\u7A7A\u540E\u63D2\u5165\uFF1A\u5148\u6E05\u7A7A\u73B0\u6709\u5168\u90E8\u6620\u5C04\uFF0C\u518D\u7528\u5BFC\u5165\u5185\u5BB9\u66FF\u6362\uFF08\u76F8\u5F53\u4E8E\u6574\u8868\u91CD\u6765\uFF09\u3002",
     parseSave: "\u89E3\u6790\u5E76\u4FDD\u5B58",
     errEmptyField: "\u5B58\u5728\u7A7A\u7684\u539F\u540D\u6216\u4EE3\u53F7",
     errInvalid: "\u4EE3\u53F7\u542B\u975E\u6CD5\u5B57\u7B26\uFF1A",
     errDuplicate: "\u4EE3\u53F7\u91CD\u590D\uFF1A",
-    imported: "\u5BFC\u5165\u6210\u529F\uFF0C\u5171 %d \u6761",
+    imported: "\u5DF2\u6E05\u7A7A\u5E76\u63D2\u5165 %d \u6761",
     importFail: "\u5BFC\u5165\u5931\u8D25\uFF1A",
+    // commands
     cmdEncrypt: "AI Alias\uFF1A\u771F\u5B9E\u540D\u8F6C\u4EE3\u53F7\uFF08\u9009\u4E2D/\u5168\u6587\uFF09",
     cmdDecrypt: "AI Alias\uFF1A\u4EE3\u53F7\u8F6C\u771F\u5B9E\u540D\uFF08\u9009\u4E2D/\u5168\u6587\uFF09",
     cmdPrefix: "AI Alias\uFF1A\u590D\u5236 AI \u63D0\u793A\u8BCD\u524D\u7F00\uFF08\u5B89\u5168\uFF0C\u65E0\u771F\u5B9E\u540D\u79F0\uFF09",
@@ -131,153 +188,658 @@ var STR = {
     emptyDecrypt: "\u6620\u5C04\u8868\u4E3A\u7A7A",
     encrypted: "\u5DF2\u52A0\u5BC6\uFF08\u9009\u4E2D\u5185\u5BB9 / \u5168\u6587\uFF09",
     decrypted: "\u5DF2\u89E3\u5BC6\uFF08\u9009\u4E2D\u5185\u5BB9 / \u5168\u6587\uFF09",
+    // 裸代号（未加前后缀）兜底还原
+    bareTitle: "\u53D1\u73B0\u672A\u52A0\u524D\u540E\u7F00\u7684\u4EE3\u53F7",
+    bareDesc: "\u4EE5\u4E0B %d \u4E2A\u4EE3\u53F7\u672A\u7528 %p \u2026 %s \u5305\u88F9\uFF0C\u56E0\u6B64\u672A\u88AB\u81EA\u52A8\u8FD8\u539F\u3002\u52FE\u9009\u8981\u8FD8\u539F\u4E3A\u771F\u5B9E\u540D\u7684\u9879\uFF0C\u7136\u540E\u70B9\u201C\u66FF\u6362\u9009\u4E2D\u201D\u3002",
+    bareWarn: "\u6CE8\u610F\uFF1A\u88F8\u4EE3\u53F7\u53EF\u80FD\u4E0E\u6B63\u5E38\u5355\u8BCD\u6DF7\u6DC6\uFF0C\u66FF\u6362\u524D\u8BF7\u9010\u6761\u6838\u5BF9\u4E0A\u4E0B\u6587\u3002",
+    bareSelectAll: "\u5168\u9009",
+    bareSelectNone: "\u6E05\u7A7A\u9009\u62E9",
+    bareReplace: "\u66FF\u6362\u9009\u4E2D\uFF08%d\uFF09",
+    bareContext: "\u4E0A\u4E0B\u6587",
+    bareBodySection: "\u7B14\u8BB0\u6B63\u6587",
+    bareTitleSection: "\u7B14\u8BB0\u6807\u9898\uFF08\u6587\u4EF6\u540D\uFF09",
+    bareTitleWarn: "\u8FD8\u539F\u6807\u9898\u5C06\u91CD\u547D\u540D\u7B14\u8BB0\u6587\u4EF6\uFF0C\u53EF\u80FD\u5F71\u54CD\u5176\u5B83\u7B14\u8BB0\u5BF9\u8BE5\u7B14\u8BB0\u7684\u94FE\u63A5\u3002\u6B64\u91CD\u547D\u540D\u5C5E\u4E8E\u6587\u4EF6\u7EA7\u64CD\u4F5C\uFF0C\u65E0\u6CD5\u7528\u7B14\u8BB0\u5185\u7684\u300C\u64A4\u9500\u300D\uFF08Ctrl/Cmd+Z\uFF09\u8FD8\u539F\uFF0C\u8BF7\u614E\u91CD\u64CD\u4F5C\u3002",
+    bareTitleRenamed: "\u5DF2\u91CD\u547D\u540D\u7B14\u8BB0\u6807\u9898",
+    bareTitleSkip: "\u5DF2\u8DF3\u8FC7 %d \u6761\u542B\u975E\u6CD5\u6587\u4EF6\u540D\u5B57\u7B26\u7684\u6807\u9898\u8FD8\u539F",
     prefixCopied: "\u5DF2\u590D\u5236 AI \u63D0\u793A\u8BCD\u524D\u7F00\u5230\u526A\u8D34\u677F",
     copyFail: "\u590D\u5236\u5931\u8D25\uFF1A",
     promptPrefix: "\u6CE8\u610F\uFF1A\u4EE5\u4E0B\u6587\u672C\u4E2D\u7684 %PXXX%S \u5F62\u5F0F\u5B57\u7B26\u4E32\u662F\u5360\u4F4D\u4EE3\u53F7\uFF08\u4F8B\u5982 %PPROJ_01%S\u3001%PORG_ABC%S\uFF09\uFF0C\u4EE3\u8868\u88AB\u8131\u654F\u7684\u771F\u5B9E\u5B9E\u4F53\u3002\u8BF7\u4E25\u683C\u539F\u6837\u4FDD\u7559\u8FD9\u4E9B\u4EE3\u53F7\uFF0C\u4E0D\u8981\u7FFB\u8BD1\u3001\u89E3\u91CA\u3001\u6539\u5199\u6216\u731C\u6D4B\u5176\u542B\u4E49\uFF1B\u82E5\u9700\u63D0\u53CA\uFF0C\u8BF7\u7EE7\u7EED\u4F7F\u7528\u540C\u4E00\u4EE3\u53F7\u3002"
   }
 };
-var AddMappingModal = class extends import_obsidian.Modal {
-  constructor(app, plugin) {
+function isValidCode(code) {
+  return /^[A-Za-z0-9_]+$/.test(code);
+}
+var BatchAddModal = class extends import_obsidian.Modal {
+  constructor(app, plugin, tab) {
     super(app);
+    this.preview = null;
     this.plugin = plugin;
+    this.tab = tab;
   }
   onOpen() {
     const { contentEl } = this;
     const t = (k) => this.plugin.t(k);
-    contentEl.createEl("h3", { text: t("addTitle") });
-    let real = "";
-    let code = "";
-    new import_obsidian.Setting(contentEl).setName(t("realName")).setDesc(t("realNameDesc")).addText((el) => el.setPlaceholder(t("realPlaceholder")).onChange((v) => real = v));
-    new import_obsidian.Setting(contentEl).setName(t("aliasName")).setDesc(t("aliasDesc")).addText((el) => el.setPlaceholder(t("aliasPlaceholder")).onChange((v) => code = v));
-    new import_obsidian.Setting(contentEl).addButton(
-      (btn) => btn.setButtonText(t("add")).setCta().onClick(async () => {
-        if (!real || !code) {
-          new import_obsidian.Notice(t("errEmpty"));
-          return;
-        }
-        if (!/^[A-Za-z0-9_]+$/.test(code)) {
-          new import_obsidian.Notice(t("errChars"));
-          return;
-        }
-        if (this.plugin.settings.mappings.some((m) => m.code === code)) {
-          new import_obsidian.Notice(t("errDup"));
-          return;
-        }
-        this.plugin.settings.mappings.push({ real, code });
-        await this.plugin.save();
-        if (this.plugin.settingsTab) this.plugin.settingsTab.display();
-        new import_obsidian.Notice(t("added") + code);
-        this.close();
-      })
-    );
+    contentEl.createEl("h3", { text: t("batchTitle") });
+    contentEl.createEl("p", { cls: "ai-sub", text: t("batchFmt") });
+    this.taEl = contentEl.createEl("textarea", { cls: "ai-ta" });
+    this.previewEl = contentEl.createEl("div", { cls: "ai-preview" });
+    const foot = contentEl.createEl("div", { cls: "ai-foot" });
+    foot.createEl("button", { text: t("cancel") }).addEventListener("click", () => this.close());
+    this.saveBtn = foot.createEl("button", { text: t("batchSave"), cls: "mod-cta" });
+    this.saveBtn.addEventListener("click", () => this.doSave());
+    this.taEl.addEventListener("input", () => this.parse());
+    this.parse();
+  }
+  parse() {
+    const t = (k) => this.plugin.t(k);
+    const raw = this.taEl.value.split(/\r?\n/);
+    const valid = [];
+    const skipped = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const line of raw) {
+      const s = line.trim();
+      if (!s) continue;
+      const m = s.match(/^(.*?)\s*(?:=|→|,|\t)\s*(.+)$/);
+      if (!m) {
+        skipped.push({ line: s, reason: t("errEmpty") });
+        continue;
+      }
+      const real = m[1].trim();
+      const code = m[2].trim();
+      if (!real || !code) {
+        skipped.push({ line: s, reason: t("errEmpty") });
+        continue;
+      }
+      if (!isValidCode(code)) {
+        skipped.push({ line: s, reason: t("errChars") });
+        continue;
+      }
+      if (seen.has(code) || this.plugin.settings.mappings.some((mm) => mm.code === code)) {
+        skipped.push({ line: s, reason: t("dupInBatch") });
+        continue;
+      }
+      seen.add(code);
+      valid.push({ real, code });
+    }
+    this.preview = { valid, skipped };
+    this.previewEl.empty();
+    if (valid.length === 0 && skipped.length === 0) {
+      this.previewEl.createEl("div", { cls: "ai-pitem" }).createEl("span", { cls: "ai-warn", text: t("empty") });
+    } else {
+      for (const v of valid) {
+        const p = this.previewEl.createEl("div", { cls: "ai-pitem" });
+        p.createEl("span", { text: v.real });
+        p.createEl("span", { cls: "ai-code", text: this.plugin.wrap(v.code) });
+      }
+      for (const sk of skipped) {
+        const p = this.previewEl.createEl("div", { cls: "ai-pitem" });
+        p.createEl("span", { text: sk.line });
+        p.createEl("span", { cls: "ai-warn", text: t("previewWarn") + sk.reason });
+      }
+    }
+    this.saveBtn.setText(t("batchSave") + (valid.length ? ` (${valid.length})` : ""));
+  }
+  doSave() {
+    if (!this.preview || this.preview.valid.length === 0) {
+      this.close();
+      return;
+    }
+    this.plugin.settings.mappings.push(...this.preview.valid);
+    void this.plugin.save();
+    new import_obsidian.Notice(this.plugin.t("addedN").replace("%d", String(this.preview.valid.length)));
+    this.tab.renderTable();
+    this.close();
   }
   onClose() {
     this.contentEl.empty();
   }
 };
 var ImportModal = class extends import_obsidian.Modal {
-  constructor(app, plugin) {
+  constructor(app, plugin, tab) {
     super(app);
     this.plugin = plugin;
+    this.tab = tab;
   }
   onOpen() {
     const { contentEl } = this;
     const t = (k) => this.plugin.t(k);
     contentEl.createEl("h3", { text: t("importTitle") });
-    contentEl.createEl("p", { text: t("importFormat") });
-    const ta = contentEl.createEl("textarea", {
-      attr: { rows: 14, style: "width:100%;font-family:monospace;" }
-    });
-    void navigator.clipboard.readText().then((txt) => ta.value = txt).catch(() => void 0);
-    new import_obsidian.Setting(contentEl).addButton(
-      (btn) => btn.setButtonText(t("parseSave")).setCta().onClick(async () => {
-        try {
-          const obj = JSON.parse(ta.value);
-          const raw = Array.isArray(obj.mappings) ? obj.mappings : [];
-          const mappings = [];
-          const seen = /* @__PURE__ */ new Set();
-          for (const m of raw) {
-            const real = typeof m.real === "string" ? m.real : "";
-            const code = typeof m.code === "string" ? m.code : "";
-            if (!real || !code) throw new Error(t("errEmptyField"));
-            if (!/^[A-Za-z0-9_]+$/.test(code)) throw new Error(t("errInvalid") + code);
-            if (seen.has(code)) throw new Error(t("errDuplicate") + code);
-            seen.add(code);
-            mappings.push({ real, code });
+    contentEl.createEl("p", { cls: "ai-sub", text: t("importFormat") });
+    contentEl.createEl("p", { cls: "ai-help", text: t("importHelp") });
+    this.taEl = contentEl.createEl("textarea", { cls: "ai-ta" });
+    void navigator.clipboard.readText().then((txt) => this.taEl.value = txt).catch(() => void 0);
+    const foot = contentEl.createEl("div", { cls: "ai-foot" });
+    foot.createEl("button", { text: t("cancel") }).addEventListener("click", () => this.close());
+    foot.createEl("button", { text: t("mergeBtn") }).addEventListener("click", () => this.doImport(true));
+    foot.createEl("button", { text: t("overwriteBtn"), cls: "mod-warning" }).addEventListener("click", () => this.doImport(false));
+  }
+  parseObj() {
+    const t = (k) => this.plugin.t(k);
+    const obj = JSON.parse(this.taEl.value);
+    const raw = Array.isArray(obj.mappings) ? obj.mappings : [];
+    const mappings = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const m of raw) {
+      const real = typeof m.real === "string" ? m.real.trim() : "";
+      const code = typeof m.code === "string" ? m.code.trim() : "";
+      if (!real || !code) throw new Error(t("errEmptyField"));
+      if (!isValidCode(code)) throw new Error(t("errInvalid") + code);
+      if (seen.has(code)) throw new Error(t("errDuplicate") + code);
+      seen.add(code);
+      mappings.push({ real, code });
+    }
+    return {
+      prefix: typeof obj.prefix === "string" ? obj.prefix : "",
+      suffix: typeof obj.suffix === "string" ? obj.suffix : "",
+      mappings
+    };
+  }
+  applyPrefixSuffix(prefix, suffix) {
+    if (prefix !== "") this.plugin.settings.prefix = prefix;
+    if (suffix !== "") this.plugin.settings.suffix = suffix;
+  }
+  doImport(merge) {
+    const t = (k) => this.plugin.t(k);
+    try {
+      const { prefix, suffix, mappings } = this.parseObj();
+      this.applyPrefixSuffix(prefix, suffix);
+      if (merge) {
+        const existing = new Set(this.plugin.settings.mappings.map((m) => m.code));
+        let added = 0;
+        for (const m of mappings) {
+          if (!existing.has(m.code)) {
+            this.plugin.settings.mappings.push(m);
+            existing.add(m.code);
+            added++;
           }
-          this.plugin.settings.prefix = typeof obj.prefix === "string" && obj.prefix !== "" ? obj.prefix : this.plugin.settings.prefix;
-          this.plugin.settings.suffix = typeof obj.suffix === "string" && obj.suffix !== "" ? obj.suffix : this.plugin.settings.suffix;
-          this.plugin.settings.mappings = mappings;
-          await this.plugin.save();
-          if (this.plugin.settingsTab) this.plugin.settingsTab.display();
-          new import_obsidian.Notice(t("imported").replace("%d", String(mappings.length)));
-          this.close();
-        } catch (e) {
-          new import_obsidian.Notice(t("importFail") + (e instanceof Error ? e.message : String(e)));
         }
-      })
-    );
+        void this.plugin.save();
+        new import_obsidian.Notice(t("importMergeOk").replace("%d", String(added)));
+      } else {
+        this.plugin.settings.mappings = mappings;
+        void this.plugin.save();
+        new import_obsidian.Notice(t("imported").replace("%d", String(mappings.length)));
+      }
+      this.tab.renderTable();
+      this.close();
+    } catch (e) {
+      new import_obsidian.Notice(t("importFail") + (e instanceof Error ? e.message : String(e)));
+    }
   }
   onClose() {
     this.contentEl.empty();
   }
 };
+var BareCodeConfirmModal = class extends import_obsidian.Modal {
+  constructor(app, plugin, editor, isSelection, original, hits, file, titleHits) {
+    super(app);
+    this.checkEls = [];
+    this.titleCheckEls = [];
+    this.plugin = plugin;
+    this.editor = editor;
+    this.isSelection = isSelection;
+    this.original = original;
+    this.hits = hits;
+    this.checks = hits.map(() => true);
+    this.file = file;
+    this.title = file ? file.basename : "";
+    this.titleHits = titleHits;
+    this.titleChecks = titleHits.map(() => true);
+  }
+  onOpen() {
+    const { contentEl } = this;
+    const t = (k) => this.plugin.t(k);
+    const p = this.plugin.settings.prefix;
+    const s = this.plugin.settings.suffix;
+    const total = this.hits.length + this.titleHits.length;
+    contentEl.createEl("h3", { text: t("bareTitle") });
+    const desc = contentEl.createEl("p", { cls: "ai-sub" });
+    desc.innerHTML = t("bareDesc").replace("%d", String(total)).replace("%p", p).replace("%s", s);
+    contentEl.createEl("p", { cls: "ai-help", text: t("bareWarn") });
+    if (this.hits.length > 0) {
+      contentEl.createEl("p", { cls: "ai-sub ai-context-label", text: t("bareBodySection") });
+      const list = contentEl.createEl("div", { cls: "ai-barelist" });
+      this.hits.forEach((h, i) => {
+        const row = list.createEl("div", { cls: "ai-bareitem" });
+        const cb = row.createEl("input", { type: "checkbox" });
+        cb.checked = true;
+        cb.addEventListener("change", () => {
+          this.checks[i] = cb.checked;
+          this.refreshFooter();
+        });
+        this.checkEls.push(cb);
+        const body = row.createEl("div", { cls: "ai-barebody" });
+        const codeLine = body.createEl("div", { cls: "ai-barecode" });
+        codeLine.createEl("span", { text: h.code, cls: "ai-code" });
+        codeLine.createEl("span", { text: "  \u2192  ", cls: "ai-arrow" });
+        codeLine.createEl("span", { text: h.real, cls: "ai-real" });
+        this.renderContext(body, h, this.original);
+      });
+    }
+    if (this.titleHits.length > 0) {
+      contentEl.createEl("p", { cls: "ai-sub ai-context-label", text: t("bareTitleSection") });
+      const warnEl = contentEl.createEl("p", { cls: "ai-help ai-help-warn" });
+      warnEl.innerHTML = t("bareTitleWarn").replace("\u6B64\u91CD\u547D\u540D", "<br>\u6B64\u91CD\u547D\u540D").replace("This rename", "<br>This rename");
+      const list = contentEl.createEl("div", { cls: "ai-barelist" });
+      this.titleHits.forEach((h, i) => {
+        const row = list.createEl("div", { cls: "ai-bareitem" });
+        const cb = row.createEl("input", { type: "checkbox" });
+        cb.checked = this.titleChecks[i];
+        cb.addEventListener("change", () => {
+          this.titleChecks[i] = cb.checked;
+          this.refreshFooter();
+        });
+        this.titleCheckEls.push(cb);
+        const body = row.createEl("div", { cls: "ai-barebody" });
+        const codeLine = body.createEl("div", { cls: "ai-barecode" });
+        codeLine.createEl("span", { text: h.code, cls: "ai-code" });
+        codeLine.createEl("span", { text: "  \u2192  ", cls: "ai-arrow" });
+        codeLine.createEl("span", { text: h.real, cls: "ai-real" });
+        this.renderContext(body, h, this.title);
+      });
+    }
+    const foot = contentEl.createEl("div", { cls: "ai-foot" });
+    const selAll = foot.createEl("button", { text: t("bareSelectAll") });
+    selAll.addEventListener("click", () => this.setAll(true));
+    const selNone = foot.createEl("button", { text: t("bareSelectNone") });
+    selNone.addEventListener("click", () => this.setAll(false));
+    foot.createEl("button", { text: t("cancel") }).addEventListener("click", () => this.close());
+    this.replaceBtn = foot.createEl("button", { text: t("bareReplace").replace("%d", String(total)), cls: "mod-cta" });
+    this.replaceBtn.addEventListener("click", () => {
+      void this.doReplace();
+    });
+  }
+  renderContext(parent, h, original) {
+    const before = original.slice(Math.max(0, h.start - 20), h.start);
+    const after = original.slice(h.end, Math.min(original.length, h.end + 20));
+    const lead = h.start > 20 ? "\u2026" : "";
+    const tail = h.end + 20 < original.length ? "\u2026" : "";
+    const ctx = parent.createEl("div", { cls: "ai-barectx" });
+    if (lead) ctx.createSpan({ text: lead });
+    ctx.createSpan({ text: before });
+    ctx.createSpan({ text: h.code, cls: "ai-hl" });
+    ctx.createSpan({ text: after });
+    if (tail) ctx.createSpan({ text: tail });
+  }
+  sanitizeFileName(s) {
+    const cleaned = s.replace(/[\\/:*?"<>|\x00-\x1f]/g, "_").replace(/^\.+/, "").replace(/[.\s]+$/, "");
+    return cleaned.length > 0 ? cleaned : null;
+  }
+  setAll(v) {
+    this.checks = this.checks.map(() => v);
+    this.checkEls.forEach((el) => el.checked = v);
+    this.titleChecks = this.titleChecks.map(() => v);
+    this.titleCheckEls.forEach((el) => el.checked = v);
+    this.refreshFooter();
+  }
+  refreshFooter() {
+    const n = this.checks.filter(Boolean).length + this.titleChecks.filter(Boolean).length;
+    this.replaceBtn.setText(this.plugin.t("bareReplace").replace("%d", String(n)));
+  }
+  async doReplace() {
+    const sel = /* @__PURE__ */ new Set();
+    this.checks.forEach((c, i) => {
+      if (c) sel.add(i);
+    });
+    let out = "";
+    let cursor = 0;
+    for (let i = 0; i < this.hits.length; i++) {
+      const h = this.hits[i];
+      out += this.original.slice(cursor, h.start);
+      out += sel.has(i) ? h.real : this.original.slice(h.start, h.end);
+      cursor = h.end;
+    }
+    out += this.original.slice(cursor);
+    if (this.isSelection) this.editor.replaceSelection(out);
+    else this.editor.setValue(out);
+    let titleMsg = null;
+    if (this.file && this.titleHits.length > 0) {
+      const chosen = this.titleHits.map((h, i) => ({ h, i })).filter((x) => this.titleChecks[x.i]).sort((a, b) => a.h.start - b.h.start);
+      if (chosen.length > 0) {
+        let built = "";
+        let c = 0;
+        let skipped = 0;
+        for (const { h } of chosen) {
+          built += this.title.slice(c, h.start);
+          const safe = this.sanitizeFileName(h.real);
+          if (safe === null) {
+            skipped++;
+            c = h.end;
+            continue;
+          }
+          built += safe;
+          c = h.end;
+        }
+        built += this.title.slice(c);
+        if (built !== this.title) {
+          const dir = this.file.parent ? this.file.parent.path : "";
+          const ext = this.file.extension ? "." + this.file.extension : "";
+          const newPath = (dir ? dir + "/" : "") + built + ext;
+          try {
+            await this.app.fileManager.renameFile(this.file, newPath);
+            titleMsg = this.plugin.t("bareTitleRenamed");
+            if (skipped > 0) titleMsg += "\uFF1B" + this.plugin.t("bareTitleSkip").replace("%d", String(skipped));
+          } catch (e) {
+            titleMsg = "\u91CD\u547D\u540D\u6807\u9898\u5931\u8D25\uFF1A" + (e instanceof Error ? e.message : String(e));
+          }
+        } else if (skipped > 0) {
+          titleMsg = this.plugin.t("bareTitleSkip").replace("%d", String(skipped));
+        }
+      }
+    }
+    const baseMsg = this.plugin.t("decrypted");
+    new import_obsidian.Notice(titleMsg ? baseMsg + "\uFF1B" + titleMsg : baseMsg);
+    this.close();
+  }
+};
 var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
+    // CRUD state
+    this.searchTerm = "";
+    this.sortKey = null;
+    this.sortDir = 1;
+    this.selected = /* @__PURE__ */ new Set();
+    this.editing = null;
+    this.addOpen = false;
     this.plugin = plugin;
   }
   display() {
     const { containerEl } = this;
-    const t = (k) => this.plugin.t(k);
     containerEl.empty();
-    new import_obsidian.Setting(containerEl).setName(t("title")).setHeading();
-    new import_obsidian.Setting(containerEl).setName(t("language")).setDesc(t("languageDesc")).addDropdown((d) => {
-      d.addOption("en", "English");
-      d.addOption("zh", "\u4E2D\u6587");
-      d.setValue(this.plugin.settings.language || "en");
-      d.onChange(async (v) => {
+    const t = (k) => this.plugin.t(k);
+    containerEl.createEl("h2", { text: t("title") });
+    new import_obsidian.Setting(containerEl).setName(t("language")).setDesc(t("languageDesc")).addDropdown(
+      (d) => d.addOption("en", "English").addOption("zh", "\u4E2D\u6587").setValue(this.plugin.settings.language).onChange((v) => {
         this.plugin.settings.language = v;
-        await this.plugin.save();
         this.plugin.registerCommands();
+        void this.plugin.save();
         this.display();
-      });
-    });
+      })
+    );
     new import_obsidian.Setting(containerEl).setName(t("prefix")).setDesc(t("prefixDesc")).addText(
-      (el) => el.setValue(this.plugin.settings.prefix).onChange(async (v) => {
+      (tc) => tc.setPlaceholder("[[").setValue(this.plugin.settings.prefix).onChange((v) => {
         this.plugin.settings.prefix = v;
-        await this.plugin.save();
+        void this.plugin.save();
+        this.renderTable();
       })
     );
     new import_obsidian.Setting(containerEl).setName(t("suffix")).setDesc(t("suffixDesc")).addText(
-      (el) => el.setValue(this.plugin.settings.suffix).onChange(async (v) => {
+      (tc) => tc.setPlaceholder("]]").setValue(this.plugin.settings.suffix).onChange((v) => {
         this.plugin.settings.suffix = v;
-        await this.plugin.save();
+        void this.plugin.save();
+        this.renderTable();
       })
-    );
-    new import_obsidian.Setting(containerEl).setName(t("addMapping")).setDesc(t("addMappingDesc")).addButton(
-      (btn) => btn.setButtonText(t("add")).setCta().onClick(() => new AddMappingModal(this.app, this.plugin).open())
     );
     new import_obsidian.Setting(containerEl).setName(t("importExport")).setDesc(t("importExportDesc")).addButton(
       (btn) => btn.setButtonText(t("exportBtn")).onClick(() => {
         void navigator.clipboard.writeText(JSON.stringify(this.plugin.settings, null, 2)).then(() => new import_obsidian.Notice(t("prefixCopied"))).catch((e) => new import_obsidian.Notice(t("copyFail") + (e instanceof Error ? e.message : String(e))));
       })
     ).addButton(
-      (btn) => btn.setButtonText(t("importBtn")).onClick(() => new ImportModal(this.app, this.plugin).open())
+      (btn) => btn.setButtonText(t("importBtn")).onClick(() => new ImportModal(this.app, this.plugin, this).open())
     );
-    new import_obsidian.Setting(containerEl).setName(t("current").replace("%d", String(this.plugin.settings.mappings.length))).setHeading();
-    if (this.plugin.settings.mappings.length === 0) {
-      containerEl.createEl("p", { text: t("empty") });
-    }
-    this.plugin.settings.mappings.forEach((m, i) => {
-      new import_obsidian.Setting(containerEl).setName(this.plugin.settings.prefix + m.code + this.plugin.settings.suffix).setDesc(m.real).addButton(
-        (btn) => btn.setButtonText(t("delete")).onClick(async () => {
-          this.plugin.settings.mappings.splice(i, 1);
-          await this.plugin.save();
-          this.display();
-        })
-      );
+    containerEl.createEl("h3", { text: t("mappingTitle"), cls: "ai-h3" });
+    const toolbar = containerEl.createEl("div", { cls: "ai-toolbar" });
+    const searchWrap = toolbar.createEl("div", { cls: "ai-search" });
+    this.searchEl = searchWrap.createEl("input", { type: "text", placeholder: t("searchPh") });
+    this.searchEl.value = this.searchTerm;
+    this.searchEl.addEventListener("input", (e) => {
+      this.searchTerm = e.target.value;
+      this.renderTable();
     });
+    this.countEl = toolbar.createEl("span", { cls: "ai-count" });
+    const btnBar = containerEl.createEl("div", { cls: "ai-btns" });
+    const addB = btnBar.createEl("button", { text: t("add"), cls: "mod-cta" });
+    addB.addEventListener("click", () => this.toggleAddForm());
+    const batchB = btnBar.createEl("button", { text: t("batchAdd") });
+    batchB.addEventListener("click", () => new BatchAddModal(this.app, this.plugin, this).open());
+    const delSelB = btnBar.createEl("button", { text: t("delSel"), cls: "mod-warning" });
+    delSelB.addEventListener("click", () => this.deleteSelected());
+    const clearB = btnBar.createEl("button", { text: t("clearAll"), cls: "mod-warning" });
+    clearB.addEventListener("click", () => this.clearAll());
+    this.addFormEl = containerEl.createEl("div", { cls: "ai-addform" });
+    this.addFormEl.style.display = "none";
+    const f1 = this.addFormEl.createEl("div", { cls: "ai-fld" });
+    f1.createEl("label", { text: t("realName") });
+    this.addRealEl = f1.createEl("input", { type: "text", placeholder: t("realPlaceholder") });
+    this.addRealEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        this.addCodeEl.focus();
+      }
+    });
+    const f2 = this.addFormEl.createEl("div", { cls: "ai-fld" });
+    f2.createEl("label", { text: t("aliasName") });
+    this.addCodeEl = f2.createEl("input", { type: "text", placeholder: t("codePlaceholder") });
+    this.addCodeEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        this.saveInlineAdd();
+      }
+    });
+    const f3 = this.addFormEl.createEl("div", { cls: "ai-fld" });
+    f3.createEl("label", { text: " " });
+    f3.createEl("button", { text: t("addSave"), cls: "mod-cta" }).addEventListener("click", () => this.saveInlineAdd());
+    const f4 = this.addFormEl.createEl("div", { cls: "ai-fld" });
+    f4.createEl("label", { text: " " });
+    f4.createEl("button", { text: t("cancel") }).addEventListener("click", () => this.toggleAddForm(true));
+    this.addHintEl = this.addFormEl.createEl("div", { cls: "ai-hint" });
+    this.tableEl = containerEl.createEl("div", { cls: "ai-table" });
+    containerEl.createEl("div", { cls: "ai-note", text: t("crudNote") });
+    this.renderTable();
+  }
+  toggleAddForm(forceClose = false) {
+    this.addOpen = forceClose ? false : !this.addOpen;
+    this.addFormEl.style.display = this.addOpen ? "flex" : "none";
+    this.addHintEl.setText("");
+    if (this.addOpen) {
+      this.addRealEl.focus();
+    } else {
+      this.addRealEl.value = "";
+      this.addCodeEl.value = "";
+    }
+  }
+  filteredMappings() {
+    let list = this.plugin.settings.mappings.map((m, i) => ({ ...m, i }));
+    const q = this.searchTerm.trim().toLowerCase();
+    if (q) {
+      list = list.filter((m) => m.real.toLowerCase().includes(q) || m.code.toLowerCase().includes(q));
+    }
+    if (this.sortKey) {
+      const key = this.sortKey;
+      list.sort((a, b) => {
+        const va = a[key].toLowerCase();
+        const vb = b[key].toLowerCase();
+        return va < vb ? -1 * this.sortDir : va > vb ? 1 * this.sortDir : 0;
+      });
+    }
+    return list;
+  }
+  renderTable() {
+    const t = (k) => this.plugin.t(k);
+    const tableEl = this.tableEl;
+    tableEl.empty();
+    const list = this.filteredMappings();
+    this.countEl.setText(`\u5171 ${this.plugin.settings.mappings.length} \u6761 \xB7 \u663E\u793A ${list.length} \u6761`);
+    const table = tableEl.createEl("table", { cls: "ai-alias-tbl" });
+    const thead = table.createEl("thead");
+    const htr = thead.createEl("tr");
+    const thCb = htr.createEl("th");
+    const selAll = thCb.createEl("input", { type: "checkbox" });
+    selAll.addEventListener("change", (e) => {
+      const checked = e.target.checked;
+      if (checked) list.forEach((m) => this.selected.add(m.i));
+      else this.selected.clear();
+      this.renderTable();
+    });
+    const thReal = htr.createEl("th", {
+      text: t("thReal") + (this.sortKey === "real" ? this.sortDir > 0 ? " \u25B2" : " \u25BC" : "")
+    });
+    thReal.addEventListener("click", () => this.toggleSort("real"));
+    const thCode = htr.createEl("th", {
+      text: t("thCode") + (this.sortKey === "code" ? this.sortDir > 0 ? " \u25B2" : " \u25BC" : "")
+    });
+    thCode.addEventListener("click", () => this.toggleSort("code"));
+    thCode.addClass("ai-right");
+    htr.createEl("th", { text: t("actions") }).addClass("ai-right");
+    const tbody = table.createEl("tbody");
+    if (this.plugin.settings.mappings.length === 0) {
+      const tr = tbody.createEl("tr");
+      const td = tr.createEl("td", { text: t("empty") });
+      td.setAttribute("colspan", "4");
+      td.addClass("ai-empty");
+      return;
+    }
+    if (list.length === 0) {
+      const tr = tbody.createEl("tr");
+      const td = tr.createEl("td", { text: t("filteredEmpty") });
+      td.setAttribute("colspan", "4");
+      td.addClass("ai-empty");
+      return;
+    }
+    for (const m of list) {
+      const tr = tbody.createEl("tr");
+      if (this.selected.has(m.i)) tr.addClass("ai-sel");
+      const tdCb = tr.createEl("td");
+      const cb = tdCb.createEl("input", { type: "checkbox" });
+      cb.checked = this.selected.has(m.i);
+      cb.addEventListener("change", (e) => {
+        const checked = e.target.checked;
+        if (checked) this.selected.add(m.i);
+        else this.selected.delete(m.i);
+        tr.toggleClass("ai-sel", checked);
+      });
+      if (this.editing === m.i) {
+        const tdR = tr.createEl("td");
+        const inR = tdR.createEl("input", { type: "text", cls: "ai-edit-in" });
+        inR.value = m.real;
+        const tdC = tr.createEl("td");
+        const inC = tdC.createEl("input", { type: "text", cls: "ai-edit-in" });
+        inC.value = m.code;
+        const tdA = tr.createEl("td");
+        tdA.addClass("ai-right");
+        tdA.createEl("button", { text: t("addSave"), cls: "mod-cta" }).addEventListener(
+          "click",
+          () => this.saveEdit(m.i, inR.value, inC.value)
+        );
+        tdA.createEl("button", { text: t("cancel") }).addEventListener("click", () => {
+          this.editing = null;
+          this.renderTable();
+        });
+      } else {
+        tr.createEl("td", { text: m.real });
+        const tdC = tr.createEl("td", { text: this.plugin.wrap(m.code) });
+        tdC.addClass("ai-code");
+        const tdA = tr.createEl("td");
+        tdA.addClass("ai-right");
+        tdA.createEl("button", { text: t("edit") }).addEventListener("click", () => {
+          this.editing = m.i;
+          this.selected.clear();
+          this.renderTable();
+        });
+        tdA.createEl("button", { text: t("del"), cls: "mod-warning" }).addEventListener(
+          "click",
+          () => this.deleteOne(m.i)
+        );
+      }
+    }
+  }
+  toggleSort(k) {
+    if (this.sortKey === k) this.sortDir *= -1;
+    else {
+      this.sortKey = k;
+      this.sortDir = 1;
+    }
+    this.renderTable();
+  }
+  saveInlineAdd() {
+    const t = (k) => this.plugin.t(k);
+    const real = this.addRealEl.value.trim();
+    const code = this.addCodeEl.value.trim();
+    if (!real || !code) {
+      this.addHintEl.setText(t("errEmpty"));
+      this.addHintEl.className = "ai-hint ai-err";
+      return;
+    }
+    if (!isValidCode(code)) {
+      this.addHintEl.setText(t("errChars"));
+      this.addHintEl.className = "ai-hint ai-err";
+      return;
+    }
+    if (this.plugin.settings.mappings.some((m) => m.code === code)) {
+      this.addHintEl.setText(t("errDup"));
+      this.addHintEl.className = "ai-hint ai-err";
+      return;
+    }
+    this.plugin.settings.mappings.push({ real, code });
+    void this.plugin.save();
+    this.addHintEl.setText(t("added") + this.plugin.wrap(code));
+    this.addHintEl.className = "ai-hint ai-ok";
+    this.addRealEl.value = "";
+    this.addCodeEl.value = "";
+    this.addRealEl.focus();
+    this.renderTable();
+  }
+  saveEdit(i, realRaw, codeRaw) {
+    const t = (k) => this.plugin.t(k);
+    const real = realRaw.trim();
+    const code = codeRaw.trim();
+    if (!real || !code) {
+      new import_obsidian.Notice(t("errEmpty"));
+      return;
+    }
+    if (!isValidCode(code)) {
+      new import_obsidian.Notice(t("errChars"));
+      return;
+    }
+    if (this.plugin.settings.mappings.some((m, j) => j !== i && m.code === code)) {
+      new import_obsidian.Notice(t("errDup"));
+      return;
+    }
+    this.plugin.settings.mappings[i] = { real, code };
+    this.editing = null;
+    void this.plugin.save();
+    new import_obsidian.Notice(t("edited"));
+    this.renderTable();
+  }
+  deleteOne(i) {
+    this.plugin.settings.mappings.splice(i, 1);
+    this.selected.clear();
+    if (this.editing !== null) {
+      if (this.editing === i) this.editing = null;
+      else if (this.editing > i) this.editing -= 1;
+    }
+    void this.plugin.save();
+    new import_obsidian.Notice(this.plugin.t("delOne"));
+    this.renderTable();
+  }
+  deleteSelected() {
+    if (this.selected.size === 0) {
+      new import_obsidian.Notice(this.plugin.t("cancelClear"));
+      return;
+    }
+    if (!confirm(this.plugin.t("confirmDelSel").replace("%d", String(this.selected.size)))) return;
+    const idxs = [...this.selected].sort((a, b) => b - a);
+    idxs.forEach((i) => this.plugin.settings.mappings.splice(i, 1));
+    const n = idxs.length;
+    this.selected.clear();
+    void this.plugin.save();
+    new import_obsidian.Notice(this.plugin.t("delN").replace("%d", String(n)));
+    this.renderTable();
+  }
+  clearAll() {
+    if (this.plugin.settings.mappings.length === 0) return;
+    if (!confirm(this.plugin.t("confirmClear").replace("%d", String(this.plugin.settings.mappings.length)))) {
+      new import_obsidian.Notice(this.plugin.t("cancelClear"));
+      return;
+    }
+    const n = this.plugin.settings.mappings.length;
+    this.plugin.settings.mappings = [];
+    this.selected.clear();
+    this.editing = null;
+    void this.plugin.save();
+    new import_obsidian.Notice(this.plugin.t("delN").replace("%d", String(n)));
+    this.renderTable();
   }
 };
 var AIAliasPlugin = class extends import_obsidian.Plugin {
@@ -349,13 +911,20 @@ var AIAliasPlugin = class extends import_obsidian.Plugin {
       new import_obsidian.Notice(this.t("emptyDecrypt"));
       return;
     }
+    const file = this.app.workspace.getActiveFile();
     const sel = editor.getSelection();
-    if (sel && sel.length > 0) {
-      editor.replaceSelection(this.decrypt(sel));
-    } else {
-      editor.setValue(this.decrypt(editor.getValue()));
+    const isSelection = !!(sel && sel.length > 0);
+    const text = isSelection ? sel : editor.getValue();
+    const decrypted = this.decrypt(text);
+    const hits = this.scanBareCodes(decrypted);
+    const titleHits = file ? this.scanBareCodes(file.basename) : [];
+    if (hits.length === 0 && titleHits.length === 0) {
+      if (isSelection) editor.replaceSelection(decrypted);
+      else editor.setValue(decrypted);
+      new import_obsidian.Notice(this.t("decrypted"));
+      return;
     }
-    new import_obsidian.Notice(this.t("decrypted"));
+    new BareCodeConfirmModal(this.app, this, editor, isSelection, decrypted, hits, file, titleHits).open();
   }
   encrypt(text) {
     const ms = [...this.settings.mappings].sort((a, b) => b.real.length - a.real.length);
@@ -373,12 +942,39 @@ var AIAliasPlugin = class extends import_obsidian.Plugin {
     }
     return out;
   }
+  buildBareRegex(code) {
+    const esc = code.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp("(?<![A-Za-z0-9_])" + esc + "(?![A-Za-z0-9_])", "g");
+  }
+  // Scan for alias codes that appear WITHOUT the prefix/suffix wrapper.
+  // Called after decrypt(), so wrapped codes are already converted to real names.
+  scanBareCodes(text) {
+    const hits = [];
+    for (const m of this.settings.mappings) {
+      const re = this.buildBareRegex(m.code);
+      let mm;
+      while ((mm = re.exec(text)) !== null) {
+        hits.push({ start: mm.index, end: mm.index + mm[0].length, code: m.code, real: m.real });
+        if (mm[0].length === 0) re.lastIndex++;
+      }
+    }
+    hits.sort((a, b) => a.start - b.start || b.end - b.start - (a.end - a.start));
+    const resolved = [];
+    let lastEnd = -1;
+    for (const h of hits) {
+      if (h.start >= lastEnd) {
+        resolved.push(h);
+        lastEnd = h.end;
+      }
+    }
+    return resolved;
+  }
   async save() {
     await this.saveData(this.settings);
   }
   async loadSettings() {
     const data = await this.loadData();
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, data);
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, data ?? {});
     if (!Array.isArray(this.settings.mappings)) this.settings.mappings = [];
     if (this.settings.language !== "zh") this.settings.language = "en";
   }

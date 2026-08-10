@@ -1,1 +1,238 @@
-/* AI Alias — no custom styles needed; settings use Obsidian default components. */
+/* AI Alias — mapping table CRUD styles (uses Obsidian theme variables) */
+.ai-h3 {
+	margin: 1.4em 0 0.6em;
+	font-size: 1.1em;
+	font-weight: 600;
+}
+
+.ai-toolbar {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	margin-bottom: 10px;
+	flex-wrap: wrap;
+}
+.ai-search {
+	flex: 1;
+	min-width: 200px;
+	position: relative;
+}
+.ai-search input {
+	width: 100%;
+}
+.ai-count {
+	color: var(--text-muted);
+	font-size: 0.8em;
+	white-space: nowrap;
+}
+
+.ai-btns {
+	display: flex;
+	gap: 8px;
+	margin-bottom: 12px;
+	flex-wrap: wrap;
+}
+
+.ai-addform {
+	display: flex;
+	gap: 10px;
+	align-items: flex-end;
+	flex-wrap: wrap;
+	background: var(--background-secondary);
+	border: 1px dashed var(--background-modifier-border);
+	border-radius: 8px;
+	padding: 12px;
+	margin-bottom: 12px;
+}
+.ai-fld {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+.ai-fld label {
+	font-size: 0.78em;
+	color: var(--text-muted);
+}
+.ai-hint {
+	font-size: 0.82em;
+	margin-top: 6px;
+	min-height: 14px;
+}
+.ai-hint.ai-err {
+	color: var(--text-error);
+}
+.ai-hint.ai-ok {
+	color: var(--text-success);
+}
+
+.ai-alias-tbl {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.9em;
+}
+.ai-alias-tbl th,
+.ai-alias-tbl td {
+	text-align: left;
+	padding: 7px 8px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	vertical-align: middle;
+}
+.ai-alias-tbl th {
+	color: var(--text-muted);
+	font-weight: 600;
+	font-size: 0.82em;
+	cursor: default;
+	user-select: none;
+}
+.ai-alias-tbl th.ai-right,
+.ai-alias-tbl td.ai-right {
+	text-align: right;
+}
+.ai-alias-tbl th:nth-child(2),
+.ai-alias-tbl th:nth-child(3) {
+	cursor: pointer;
+}
+.ai-alias-tbl th:nth-child(2):hover,
+.ai-alias-tbl th:nth-child(3):hover {
+	color: var(--text-normal);
+}
+.ai-alias-tbl tr.ai-sel {
+	background: var(--background-modifier-hover);
+}
+.ai-alias-tbl td.ai-code {
+	font-family: var(--font-monospace);
+	color: var(--interactive-accent);
+}
+.ai-alias-tbl td.ai-empty {
+	text-align: center;
+	color: var(--text-muted);
+}
+.ai-edit-in {
+	width: 100%;
+	min-width: 120px;
+}
+
+.ai-note {
+	font-size: 0.78em;
+	color: var(--text-muted);
+	margin-top: 10px;
+	line-height: 1.6;
+}
+
+/* modal */
+.ai-sub {
+	color: var(--text-muted);
+	font-size: 0.85em;
+	margin: 0 0 12px;
+}
+.ai-help {
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-left: 3px solid var(--interactive-accent);
+	border-radius: 6px;
+	padding: 10px 12px;
+	font-size: 0.82em;
+	line-height: 1.6;
+	color: var(--text-muted);
+	margin: 0 0 12px;
+}
+.ai-help.ai-help-warn {
+	border-left-color: var(--text-warning, #b58105);
+	background: var(--background-primary-alt, var(--background-secondary));
+	color: var(--text-normal);
+}
+.ai-ta {
+	width: 100%;
+	min-height: 150px;
+	font-family: var(--font-monospace);
+	font-size: 0.85em;
+	resize: vertical;
+}
+.ai-preview {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	margin: 12px 0;
+	max-height: 200px;
+	overflow: auto;
+}
+.ai-pitem {
+	display: flex;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 6px 10px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	font-size: 0.85em;
+}
+.ai-pitem:last-child {
+	border-bottom: none;
+}
+.ai-pitem .ai-code {
+	font-family: var(--font-monospace);
+	color: var(--interactive-accent);
+}
+.ai-pitem .ai-warn {
+	color: var(--text-error);
+	font-size: 0.92em;
+}
+.ai-foot {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+/* bare-code confirm modal */
+.ai-context-label {
+	margin: 4px 0 6px;
+}
+.ai-barelist {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	max-height: 320px;
+	overflow: auto;
+	margin-bottom: 12px;
+}
+.ai-bareitem {
+	display: flex;
+	align-items: flex-start;
+	gap: 10px;
+	padding: 9px 11px;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+.ai-bareitem:last-child {
+	border-bottom: none;
+}
+.ai-bareitem > input[type='checkbox'] {
+	margin-top: 3px;
+	flex: 0 0 auto;
+}
+.ai-barebody {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+.ai-barecode {
+	font-size: 0.88em;
+	margin-bottom: 3px;
+}
+.ai-barecode .ai-code {
+	font-family: var(--font-monospace);
+	color: var(--interactive-accent);
+}
+.ai-barecode .ai-arrow {
+	color: var(--text-muted);
+}
+.ai-barecode .ai-real {
+	font-weight: 600;
+}
+.ai-barectx {
+	font-family: var(--font-monospace);
+	font-size: 0.8em;
+	color: var(--text-muted);
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+/* text-only highlight on the matched code inside context (no background) */
+.ai-barectx .ai-hl {
+	color: var(--text-error);
+	font-weight: 700;
+}
