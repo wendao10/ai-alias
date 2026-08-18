@@ -1,7 +1,7 @@
 {
   "id": "ai-alias",
   "name": "AI Alias",
-  "version": "1.7.0",
+  "version": "1.7.1",
   "minAppVersion": "1.4.0",
   "description": "Locally mask sensitive names (projects, clients, people) as aliases before sending notes to any AI, then restore on reply. Mapping table never leaves your device. Batch file/folder mode, categories, fully offline.",
   "author": "wendao10",
