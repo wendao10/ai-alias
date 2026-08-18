@@ -3,7 +3,7 @@
   "name": "AI Alias",
   "version": "1.7.0",
   "minAppVersion": "1.4.0",
-  "description": "Mask sensitive names in your notes with custom aliases before sending text to an AI, then restore them on the AI's reply. Your mapping table never leaves your machine.",
+  "description": "Locally mask sensitive names (projects, clients, people) as aliases before sending notes to any AI, then restore on reply. Mapping table never leaves your device. Batch file/folder mode, categories, fully offline.",
   "author": "wendao10",
   "isDesktopOnly": false
 }
