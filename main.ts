@@ -1952,7 +1952,7 @@ class AIAliasSettingTab extends PluginSettingTab {
 		htr.createEl('th', { text: '' });
 		const thReal = htr.createEl('th', { text: t('thReal') + this.sortIndicator('real') });
 		thReal.addEventListener('click', () => this.toggleSort('real'));
-		const thCat = htr.createEl('th', { text: t('thCat') });
+		htr.createEl('th', { text: t('thCat') });
 		const thCode = htr.createEl('th', { text: t('thCode') + this.sortIndicator('code') });
 		thCode.addEventListener('click', () => this.toggleSort('code'));
 		thCode.addClass('ai-right');
@@ -2384,7 +2384,8 @@ export default class AIAliasPlugin extends Plugin {
 	private isBatchTarget(f: TFile): boolean {
 		if (f.extension !== 'md') return false;
 		const p = f.path;
-		return !p.startsWith('.obsidian/') && !p.startsWith('.trash/');
+		const cfg = this.app.vault.configDir;
+		return !p.startsWith(cfg + '/') && !p.startsWith('.trash/');
 	}
 
 	private mdFilesUnder(folder: TFolder): TFile[] {
@@ -2416,7 +2417,7 @@ export default class AIAliasPlugin extends Plugin {
 	private addBatchMenu(menu: Menu, items: TAbstractFile[], multi: boolean): void {
 		const singleFile = !multi && items.length === 1 && items[0] instanceof TFile;
 		// a right-click on a single non-markdown file shows nothing at all
-		if (singleFile && !this.isBatchTarget(items[0] as TFile)) return;
+		if (singleFile && !this.isBatchTarget(items[0])) return;
 		const targets = this.collectTargets(items);
 		const n = targets.length;
 		if (multi && n === 0) return;
