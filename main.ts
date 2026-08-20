@@ -38,11 +38,13 @@ interface AIAliasSettings {
 	schemaVersion?: number;
 	// ---- v1.7.0 batch operations ----
 	batchIncludeSubfolders: boolean;
-	batchBareCodePolicy: 'skip' | 'confirmAll';
+	batchBareCodePolicy: 'skip' | 'confirmAll' | 'restoreAll';
 	batchRenameTitles: boolean;
 	batchSkipFrontmatter: boolean;
 	batchBackupEnabled: boolean;
 	batchBackupKeep: number;
+	// ---- v1.8.0 UI refactor: paste auto-unmask ----
+	pasteUnmask: boolean;
 }
 
 const SCHEMA_VERSION = 2;
@@ -65,7 +67,8 @@ const DEFAULT_SETTINGS: AIAliasSettings = {
 	batchRenameTitles: false,
 	batchSkipFrontmatter: true,
 	batchBackupEnabled: true,
-	batchBackupKeep: 5
+	batchBackupKeep: 5,
+	pasteUnmask: false
 };
 
 interface PresetDef {
@@ -88,13 +91,26 @@ const PAGE = 10;
 
 const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 	en: {
-		title: 'AI Alias',
+		headerTitle: 'AI Alias',
+		headerSub: 'Local privacy gateway for AI',
+		navGeneral: 'General',
+		navCatMap: 'Categories & mappings',
+		navBatch: 'Batch operations',
+		navData: 'Data management',
+		closeAria: 'Close settings',
+		secGeneral: 'General',
+		secCategory: 'Categories',
+		secMapping: 'Mapping table',
+		secBatch: 'Batch operations',
 		language: 'Language',
 		languageDesc: 'Interface language for this plugin.',
 		prefix: 'Alias wrap prefix',
 		prefixDesc: 'Left wrapper around the alias. Default [[ renders as an Obsidian link; change to 【 or « to avoid that.',
 		suffix: 'Alias wrap suffix',
 		suffixDesc: 'Right wrapper around the alias.',
+		pasteUnmask: 'Paste & auto-unmask',
+		pasteUnmaskDesc: 'When you paste text that contains aliases (e.g. from an AI reply), automatically restore the real names in the pasted text. Only the pasted text is affected.',
+		pasteUnmasked: 'Auto-restored aliases in pasted text',
 		add: 'Add',
 		importExport: 'Import / Export mappings',
 		importExportDesc: 'Export: copy JSON to clipboard (safe, not written to any note). Import: paste JSON from clipboard; choose Clear & insert or Insert.',
@@ -102,13 +118,16 @@ const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 		importBtn: 'Import from clipboard',
 		// CRUD manager
 		mappingTitle: 'Mapping table',
+		openMappingDesc: 'Open in a wider full-screen window (recommended to avoid the narrow right-side panel).',
+		mappingInlineDesc: 'Search, add, edit and delete mappings here. Entries are shown 10 per page; use the category dropdown to filter.',
 		searchPh: 'Search real name, alias or category…',
 		batchAdd: 'Batch add',
 		delSel: 'Delete selected',
 		clearAll: 'Clear all',
-		addSave: 'Save',
+		addSave: 'Add',
+		save: 'Save',
 		cancel: 'Cancel',
-		thReal: 'Real name',
+		thReal: 'Original name',
 		thCode: 'Alias',
 		thCat: 'Category',
 		actions: 'Actions',
@@ -150,6 +169,7 @@ const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 cmdEncrypt: 'AI Alias: Convert real names to aliases (真实名转代号)',
 cmdDecrypt: 'AI Alias: Convert aliases to real names (代号转真实名)',
 cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
+		cmdOpenMappings: 'AI Alias: Open mappings (打开映射表管理)',
 		menuEncrypt: 'AI Alias: Real name → Alias',
 		menuDecrypt: 'AI Alias: Alias → Real name',
 		emptyEncrypt: 'Mapping table is empty; add entries in settings first',
@@ -176,6 +196,8 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		// category auto-alias (v1.6.0)
 		catTitle: 'Categories',
 		catAdd: 'Add category',
+		catAddTitle: 'Add category',
+		catEditTitle: 'Edit category',
 		catNamePh: 'Name',
 		catPrefixPh: 'Prefix',
 		catPrefixDesc: 'Letters/digits only; must be globally unique. Changing a prefix keeps existing aliases unchanged; only new aliases use the new prefix.',
@@ -201,6 +223,8 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		aliasName: 'Alias',
 		realPlaceholder: 'Real name',
 		codePlaceholder: 'Alias (letters/digits/_)',
+		codeName: 'Alias',
+		codePlaceholderAuto: 'Leave empty to auto-generate',
 		pagerPrev: 'Prev',
 		pagerNext: 'Next',
 		catNotFound: 'Category not found',
@@ -212,9 +236,10 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		batchIncludeSubDesc: 'When running a batch action on a folder, also process notes inside its subfolders.',
 		batchBarePolicy: 'Bare alias codes on batch decrypt',
 		batchBarePolicyDesc:
-			'A bare code is an alias that appears without the wrapper (AI replies often drop it). "Confirm each" lists every bare code, unchecked by default. "Skip" restores only aliases that still have the wrapper.',
+			'A bare code is an alias that appears without the wrapper (AI replies often drop it). "Confirm each" lists every bare code, unchecked by default. "Restore all" pre-checks them all. "Skip" restores only aliases that still have the wrapper.',
 		batchBarePolicyConfirm: 'Confirm each (recommended)',
 		batchBarePolicySkip: 'Skip bare codes',
+		batchBarePolicyRestore: 'Restore all bare codes',
 		batchRename: 'Also restore note titles on batch decrypt',
 		batchRenameDesc:
 			'Renames the note files. This affects links from other notes and cannot be undone with Ctrl/Cmd+Z. Off by default.',
@@ -249,6 +274,7 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		bpSummary: 'Scanned %s note(s) → will change %c · %n replacement(s)',
 		bpBreakdown: 'With alias %w · bare %b · titles %t',
 		bpPolicyHint: 'Bare codes are listed one by one for you to confirm; nothing is restored automatically.',
+		bpPolicyRestoreAll: 'Bare codes are pre-selected below (restore all); uncheck any you want to keep as aliases.',
 		bpSkipBare: 'Skip bare codes (restore only aliases that have the wrapper)',
 		bpRenameTitles: 'Also restore note titles (renames the files)',
 		bpRenameWarn: 'Renaming affects links from other notes and cannot be undone with Ctrl/Cmd+Z.',
@@ -270,6 +296,30 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		bpRun: 'Run (%d notes)',
 		bpConfirmMany: '%d notes will be modified and written to disk. Continue?',
 		bpEmpty: 'No mapping hits found in the scanned notes.',
+		// ---- v1.8.0 batch preview & import modals (new i18n keys) ----
+		bpSubEnc: 'Batch encrypt preview · a snapshot is auto-created for undo.',
+		bpSubDec: 'Batch decrypt preview · a snapshot is auto-created for undo.',
+		bpStatFiles: 'Files',
+		bpStatHits: 'Hits',
+		bpStatBare: 'Bare',
+		bpSkipFmLabel: 'Skip frontmatter when encrypting',
+		bpBareLabel: 'Bare codes (unwrapped) handling',
+		bpFileListTitle: 'File list',
+		bpInfoBar: 'Operation will modify files; a snapshot was auto-created and can be undone anytime.',
+		bpInfoBarFmt: 'Operation will modify %d file(s); a snapshot was auto-created and can be undone anytime.',
+		bpSelected: 'Selected %d / %d',
+		bpRunEnc: 'Run encryption (%d notes)',
+		bpRunDec: 'Run decryption (%d notes)',
+		importTitleV2: 'Batch import mappings',
+		importSubV2: 'One per line: real name = alias. Preview, then insert into the mapping table.',
+		importInputLabel: 'Mapping content (each line: original = alias)',
+		importModeLabel: 'Import mode',
+		importMergeV2: 'Append insert',
+		importOverwriteV2: 'Clear & insert',
+		importPreviewEmpty: 'Preview: enter mappings to import',
+		importPreviewHead: '%v valid · %s duplicates skipped',
+		importWillInsert: 'Will insert %d entries',
+		importDoBtn: 'Import %d entries',
 		// ---- v1.7.0 batch operations: undo ----
 		cmdUndo: 'AI Alias: Undo last batch operation (撤销上次批量操作)',
 		undoNone: 'No batch snapshot found',
@@ -290,25 +340,41 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		cat_dept2: 'Department L2'
 	},
 	zh: {
-		title: 'AI Alias（保密代号）',
+		headerTitle: 'AI Alias 设置',
+		headerSub: '面向 AI 的本地隐私脱敏中间件',
+		navGeneral: '通用',
+		navCatMap: '分类与映射',
+		navBatch: '批量操作',
+		navData: '数据管理',
+		closeAria: '关闭设置',
+		secGeneral: '通用',
+		secCategory: '分类管理',
+		secMapping: '映射表',
+		secBatch: '批量操作',
 		language: '语言',
 		languageDesc: '本插件的界面语言。',
 		prefix: '代号包裹前缀',
 		prefixDesc: '包裹代号的左符号。默认 [[ 会被 Obsidian 渲染成链接，可改为 【 或 « 避免。',
 		suffix: '代号包裹后缀',
 		suffixDesc: '包裹代号的右符号。',
-		add: '添加',
+		pasteUnmask: '粘贴即还原',
+		pasteUnmaskDesc: '粘贴包含代号的内容（如 AI 回复）时，自动把代号还原为真实名称。仅影响粘贴进来的文本。',
+		pasteUnmasked: '已自动还原粘贴文本中的代号',
+		add: '新增',
 		importExport: '导入 / 导出映射',
 		importExportDesc: '导出：复制 JSON 到剪贴板（安全，不写入任何笔记）。导入：从剪贴板粘贴 JSON，可选择清空后插入或插入。',
 		exportBtn: '导出到剪贴板',
 		importBtn: '从剪贴板导入',
 		// CRUD manager
 		mappingTitle: '映射表',
+		openMappingDesc: '在更宽的全屏窗口中管理映射表（推荐，避免右侧设置面板过窄）。',
+		mappingInlineDesc: '在此搜索、新增、编辑、删除映射。每页显示 10 条，可用类别下拉筛选。',
 		searchPh: '搜索原文 / 代号 / 类别…',
-		batchAdd: '批量添加',
+		batchAdd: '批量新增',
 		delSel: '删除选中',
 		clearAll: '清空全部',
-		addSave: '保存',
+		addSave: '新增',
+		save: '保存',
 		cancel: '取消',
 		thReal: '原文',
 		thCode: '代号',
@@ -316,7 +382,7 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		actions: '操作',
 		edit: '编辑',
 		del: '删除',
-		empty: '（空）请先添加条目。',
+		empty: '（空）请先新增条目。',
 		filteredEmpty: '无匹配结果。',
 		errEmpty: '原文和代号都不能为空',
 		errChars: '代号只能包含字母、数字、下划线',
@@ -329,9 +395,9 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		confirmDelSel: '确定删除选中的 %d 条？',
 		confirmClear: '确定清空全部 %d 条映射？此操作不可撤销。',
 		cancelClear: '已取消',
-		batchTitle: '批量添加映射',
+		batchTitle: '批量新增映射',
 		batchFmt: '每行一条。「原文」→ 用默认类别自动出码；「原文|类别」→ 指定类别自动出码；「原文=代号」→ 手动代号（未分类）。空行忽略。',
-		batchSave: '添加',
+		batchSave: '新增',
 		previewWarn: '跳过：',
 		dupInBatch: '批量内重复',
 		importMergeOk: '已插入 %d 条新映射',
@@ -352,9 +418,10 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 cmdEncrypt: 'AI Alias：真实名转代号（Convert real names to aliases）',
 cmdDecrypt: 'AI Alias：代号转真实名（Convert aliases to real names）',
 cmdPrefix: 'AI Alias：复制 AI 提示词前缀（Copy AI prompt prefix）',
+		cmdOpenMappings: 'AI Alias：打开映射表管理（Open mappings）',
 		menuEncrypt: 'AI Alias：真实名 → 代号',
 		menuDecrypt: 'AI Alias：代号 → 真实名',
-		emptyEncrypt: '映射表为空，请先在设置中添加条目',
+		emptyEncrypt: '映射表为空，请先在设置中新增条目',
 		emptyDecrypt: '映射表为空',
 		encrypted: '已加密（选中内容 / 全文）',
 		decrypted: '已解密（选中内容 / 全文）',
@@ -378,6 +445,8 @@ cmdPrefix: 'AI Alias：复制 AI 提示词前缀（Copy AI prompt prefix）',
 		// 分类自动代号 (v1.6.0)
 		catTitle: '类别',
 		catAdd: '新增类别',
+		catAddTitle: '新增类别',
+		catEditTitle: '编辑类别',
 		catNamePh: '名称',
 		catPrefixPh: '前缀',
 		catPrefixDesc: '仅允许字母数字，全局唯一。修改前缀不影响已有代号，仅新生成代号使用新前缀。',
@@ -403,6 +472,8 @@ cmdPrefix: 'AI Alias：复制 AI 提示词前缀（Copy AI prompt prefix）',
 		aliasName: '代号',
 		realPlaceholder: '原文',
 		codePlaceholder: '代号（字母/数字/下划线）',
+		codeName: '代号',
+		codePlaceholderAuto: '留空自动生成',
 		pagerPrev: '上一页',
 		pagerNext: '下一页',
 		catNotFound: '未找到该类别',
@@ -414,9 +485,10 @@ cmdPrefix: 'AI Alias：复制 AI 提示词前缀（Copy AI prompt prefix）',
 		batchIncludeSubDesc: '对文件夹执行批量操作时，是否一并处理其子文件夹内的笔记。',
 		batchBarePolicy: '批量解密时的裸代号策略',
 		batchBarePolicyDesc:
-			'裸代号指没有前后缀包裹的代号（AI 回复经常把包裹弄丢）。「逐条确认」会把所有裸代号列出、默认不勾选；「跳过」则只还原仍带前后缀的代号。',
+			'裸代号指没有前后缀包裹的代号（AI 回复经常把包裹弄丢）。「逐条确认」会把所有裸代号列出、默认不勾选；「全部还原」默认全部勾选；「跳过」则只还原仍带前后缀的代号。',
 		batchBarePolicyConfirm: '逐条确认（推荐）',
 		batchBarePolicySkip: '跳过裸代号',
+		batchBarePolicyRestore: '全部还原裸代号',
 		batchRename: '批量解密时一并还原笔记标题',
 		batchRenameDesc: '会重命名笔记文件，影响其它笔记指向它的链接，且无法用 Ctrl/Cmd+Z 撤销。默认关闭。',
 		batchSkipFm: '批量加密时跳过 YAML frontmatter',
@@ -450,6 +522,7 @@ cmdPrefix: 'AI Alias：复制 AI 提示词前缀（Copy AI prompt prefix）',
 		bpSummary: '扫描 %s 篇 → 将修改 %c 篇 · 共 %n 处',
 		bpBreakdown: '含代号 %w · 裸代号 %b · 标题 %t',
 		bpPolicyHint: '裸代号默认全部列出、逐条勾选确认，不会自动还原。',
+		bpPolicyRestoreAll: '裸代号已默认全部勾选（全部还原），如需保留为代号可取消勾选。',
 		bpSkipBare: '跳过裸代号（仅还原带前后缀的代号）',
 		bpRenameTitles: '同时还原笔记标题（会重命名文件）',
 		bpRenameWarn: '重命名会影响其它笔记指向它的链接，且无法用 Ctrl/Cmd+Z 撤销。',
@@ -471,6 +544,30 @@ cmdPrefix: 'AI Alias：复制 AI 提示词前缀（Copy AI prompt prefix）',
 		bpRun: '执行（%d 篇）',
 		bpConfirmMany: '将修改并写入 %d 篇笔记，确定继续？',
 		bpEmpty: '扫描范围内没有任何映射命中。',
+		// ---- v1.8.0 批量预览与导入弹窗（新增 i18n 键） ----
+		bpSubEnc: '将自动创建快照，可随时撤销。',
+		bpSubDec: '将自动创建快照，可随时撤销。',
+		bpStatFiles: '文件',
+		bpStatHits: '命中',
+		bpStatBare: '裸代号',
+		bpSkipFmLabel: '加密时跳过 frontmatter',
+		bpBareLabel: '裸代号（未包裹）处理',
+		bpFileListTitle: '文件清单',
+		bpInfoBar: '操作将修改文件，已自动创建快照，可随时撤销。',
+		bpInfoBarFmt: '操作将修改 %d 个文件，已自动创建快照，可随时撤销。',
+		bpSelected: '已选 %d / %d 个文件',
+		bpRunEnc: '执行加密（%d 篇）',
+		bpRunDec: '执行解密（%d 篇）',
+		importTitleV2: '批量导入映射',
+		importSubV2: '每行一条：真实名=代号，预览后插入映射表',
+		importInputLabel: '映射内容（每行 原文=代号）',
+		importModeLabel: '导入方式',
+		importMergeV2: '追加插入',
+		importOverwriteV2: '清空后插入',
+		importPreviewEmpty: '预览：请输入要导入的映射',
+		importPreviewHead: '%v 条有效 · %s 条重复已跳过',
+		importWillInsert: '将插入 %d 条',
+		importDoBtn: '导入 %d 条',
 		// ---- v1.7.0 批量操作：撤销 ----
 		cmdUndo: 'AI Alias：撤销上次批量操作（Undo last batch operation）',
 		undoNone: '没有找到批量操作快照',
@@ -721,7 +818,8 @@ class BatchAddModal extends Modal {
 		const raw = this.taEl.value.split(/\r?\n/);
 		const valid: { real: string; code: string; manual: boolean; category: string | null }[] = [];
 		const skipped: { line: string; reason: string }[] = [];
-		const seen = new Set<string>();
+		const used = new Set<string>(this.plugin.settings.mappings.map((mm) => mm.code));
+		const localSeq = new Map<string, number>();
 		const perLine = this.perLineEl.checked;
 		const defCat = this.catSel.value;
 		for (const line of raw) {
@@ -739,11 +837,11 @@ class BatchAddModal extends Modal {
 					skipped.push({ line: s, reason: t('errChars') });
 					continue;
 				}
-				if (seen.has(code) || this.plugin.settings.mappings.some((mm) => mm.code === code)) {
+				if (used.has(code)) {
 					skipped.push({ line: s, reason: t('dupInBatch') });
 					continue;
 				}
-				seen.add(code);
+				used.add(code);
 				valid.push({ real, code, manual: true, category: null });
 				continue;
 			}
@@ -769,7 +867,14 @@ class BatchAddModal extends Modal {
 				skipped.push({ line: s, reason: t('needCat') });
 				continue;
 			}
-			const code = this.plugin.generateCode(cat);
+			let seq = localSeq.get(cat.id) ?? cat.seq;
+			let code: string;
+			do {
+				seq += 1;
+				code = cat.prefix + String(seq).padStart(3, '0');
+			} while (used.has(code));
+			localSeq.set(cat.id, seq);
+			used.add(code);
 			valid.push({ real, code, manual: false, category: cat.id });
 		}
 		this.preview = { valid, skipped };
@@ -797,7 +902,12 @@ class BatchAddModal extends Modal {
 			return;
 		}
 		for (const v of this.preview.valid) {
-			this.plugin.settings.mappings.push({ real: v.real, code: v.code, category: v.category, manual: v.manual });
+			let code = v.code;
+			if (!v.manual) {
+				const cat = this.plugin.categoryById(v.category);
+				if (cat) code = this.plugin.generateCode(cat);
+			}
+			this.plugin.settings.mappings.push({ real: v.real, code, category: v.category, manual: v.manual });
 		}
 		void this.plugin.save();
 		new Notice(this.plugin.t('addedN').replace('%d', String(this.preview.valid.length)));
@@ -815,6 +925,12 @@ class ImportModal extends Modal {
 	plugin: AIAliasPlugin;
 	tab: AIAliasSettingTab;
 	taEl!: HTMLTextAreaElement;
+	mode: 'merge' | 'overwrite' = 'merge';
+	preview: { valid: { real: string; code: string; category: string | null; manual: boolean }[]; skipped: { line: string; reason: string }[] } | null = null;
+	importBtn!: HTMLButtonElement;
+	importLabel!: HTMLElement;
+	previewEl!: HTMLElement;
+	previewHeader!: HTMLElement;
 
 	constructor(app: App, plugin: AIAliasPlugin, tab: AIAliasSettingTab) {
 		super(app);
@@ -825,74 +941,159 @@ class ImportModal extends Modal {
 	onOpen(): void {
 		const { contentEl } = this;
 		const t = (k: string): string => this.plugin.t(k);
-		this.titleEl.setText(t('importTitle'));
-		contentEl.createEl('p', { cls: 'ai-sub', text: t('importFormat') });
-		contentEl.createEl('p', { cls: 'ai-help', text: t('importHelp') });
-		this.taEl = contentEl.createEl('textarea', { cls: 'ai-ta' });
-		void navigator.clipboard.readText().then((txt) => (this.taEl.value = txt)).catch(() => undefined);
+		this.modalEl.addClass('ai-importmodal');
+		this.titleEl.setText(t('importTitleV2') || '\u6279\u91cf\u5bfc\u5165\u6620\u5c04');
+		contentEl.createEl('p', { cls: 'ai-sub', text: t('importSubV2') || '\u6bcf\u884c\u4e00\u6761\uff1a\u771f\u5b9e\u540d=\u4ee3\u53f7\uff0c\u9884\u89c8\u540e\u63d2\u5165\u6620\u5c04\u8868' });
+
+		const inputWrap = contentEl.createDiv('ai-import-input');
+		inputWrap.createDiv('ai-import-label').setText(t('importInputLabel') || '\u6620\u5c04\u5185\u5bb9\uff08\u6bcf\u884c \u539f\u6587=\u4ee3\u53f7\uff09');
+		this.taEl = inputWrap.createEl('textarea', { cls: 'ai-ta ai-import-ta' });
+		this.taEl.rows = 5;
+		this.taEl.addEventListener('input', () => this.parse());
+
+		const modeWrap = contentEl.createDiv('ai-import-mode');
+		modeWrap.createDiv('ai-import-label').setText(t('importModeLabel') || '\u5bfc\u5165\u65b9\u5f0f');
+		const modeBtns = modeWrap.createDiv('ai-import-modebtns');
+		const mergeBtn = modeBtns.createEl('button', { text: t('importMergeV2') || '\u9012\u52a0\u63d2\u5165', type: 'button', cls: 'ai-import-modebtn is-active' });
+		const overBtn = modeBtns.createEl('button', { text: t('importOverwriteV2') || '\u6e05\u7a7a\u540e\u63d2\u5165', type: 'button', cls: 'ai-import-modebtn' });
+		mergeBtn.addEventListener('click', () => {
+			this.mode = 'merge';
+			mergeBtn.addClass('is-active');
+			overBtn.removeClass('is-active');
+		});
+		overBtn.addEventListener('click', () => {
+			this.mode = 'overwrite';
+			overBtn.addClass('is-active');
+			mergeBtn.removeClass('is-active');
+		});
+
+		this.previewEl = contentEl.createDiv('ai-import-preview');
+		this.previewHeader = this.previewEl.createDiv('ai-import-previewhead');
+		const previewBody = this.previewEl.createDiv('ai-import-previewbody');
+
 		const foot = contentEl.createEl('div', { cls: 'ai-foot' });
-		foot.createEl('button', { text: t('cancel') }).addEventListener('click', () => this.close());
-		foot.createEl('button', { text: t('mergeBtn') }).addEventListener('click', () => this.doImport(true));
-		foot.createEl('button', { text: t('overwriteBtn'), cls: 'mod-warning' }).addEventListener('click', () => this.doImport(false));
+		this.importLabel = foot.createSpan({ text: '', cls: 'ai-import-footlabel' });
+		const cancelBtn = foot.createEl('button', { text: t('cancel') });
+		cancelBtn.addEventListener('click', () => this.close());
+		this.importBtn = foot.createEl('button', { text: '', cls: 'mod-cta' });
+		this.importBtn.addEventListener('click', () => this.doImport());
+
+		this.parse();
+		void previewBody;
 	}
 
-	parseObj(): { prefix: string; suffix: string; mappings: Mapping[] } {
+	parse(): void {
 		const t = (k: string): string => this.plugin.t(k);
-		const obj = JSON.parse(this.taEl.value) as { prefix?: unknown; suffix?: unknown; mappings?: unknown };
-		const raw = Array.isArray(obj.mappings) ? (obj.mappings as Record<string, unknown>[]) : [];
-		const mappings: Mapping[] = [];
-		const seen = new Set<string>();
-		for (const m of raw) {
-			const real = typeof m.real === 'string' ? m.real.trim() : '';
-			const code = typeof m.code === 'string' ? m.code.trim() : '';
-			const catRaw = typeof m.category === 'string' ? m.category : null;
-			const cat = catRaw && this.plugin.settings.categories.some((c) => c.id === catRaw) ? catRaw : null;
-			if (!real || !code) throw new Error(t('errEmptyField'));
-			if (!isValidCode(code)) throw new Error(t('errInvalid') + code);
-			if (seen.has(code)) throw new Error(t('errDuplicate') + code);
-			seen.add(code);
-			mappings.push({ real, code, category: cat, manual: false });
-		}
-		return {
-			prefix: typeof obj.prefix === 'string' ? obj.prefix : '',
-			suffix: typeof obj.suffix === 'string' ? obj.suffix : '',
-			mappings
-		};
-	}
-
-	applyPrefixSuffix(prefix: string, suffix: string): void {
-		if (prefix !== '') this.plugin.settings.prefix = prefix;
-		if (suffix !== '') this.plugin.settings.suffix = suffix;
-	}
-
-	doImport(merge: boolean): void {
-		const t = (k: string): string => this.plugin.t(k);
-		try {
-			const { prefix, suffix, mappings } = this.parseObj();
-			this.applyPrefixSuffix(prefix, suffix);
-			if (merge) {
-				const existing = new Set(this.plugin.settings.mappings.map((m) => m.code));
-				let added = 0;
-				for (const m of mappings) {
-					if (!existing.has(m.code)) {
-						this.plugin.settings.mappings.push(m);
-						existing.add(m.code);
-						added++;
-					}
-				}
-				void this.plugin.save();
-				new Notice(t('importMergeOk').replace('%d', String(added)));
-			} else {
-				this.plugin.settings.mappings = mappings;
-				void this.plugin.save();
-				new Notice(t('imported').replace('%d', String(mappings.length)));
+		const raw = this.taEl.value.split(/\r?\n/);
+		const valid: { real: string; code: string; category: string | null; manual: boolean }[] = [];
+		const skipped: { line: string; reason: string }[] = [];
+		const used = new Set(this.plugin.settings.mappings.map((mm) => mm.code));
+		for (const line of raw) {
+			const s = line.trim();
+			if (!s) continue;
+			const mEq = s.match(/^(.*?)\s*(?:=|→)\s*(.+)$/);
+			if (!mEq) {
+				skipped.push({ line: s, reason: t('errEmpty') });
+				continue;
 			}
-			this.tab.renderTable();
-			this.tab.renderUncatNotice();
-			this.close();
-		} catch (e) {
-			new Notice(t('importFail') + (e instanceof Error ? e.message : String(e)));
+			const real = mEq[1].trim();
+			const code = mEq[2].trim().toUpperCase();
+			if (!real || !code) {
+				skipped.push({ line: s, reason: t('errEmptyField') });
+				continue;
+			}
+			if (!isValidCode(code)) {
+				skipped.push({ line: s, reason: t('errInvalid') + code });
+				continue;
+			}
+			if (used.has(code)) {
+				skipped.push({ line: s, reason: t('errDuplicate') + code });
+				continue;
+			}
+			used.add(code);
+			valid.push({ real, code, category: null, manual: true });
 		}
+		this.preview = { valid, skipped };
+		this.renderPreview();
+	}
+
+	private renderPreview(): void {
+		const t = (k: string): string => this.plugin.t(k);
+		if (!this.preview) return;
+		const { valid, skipped } = this.preview;
+		const total = valid.length + skipped.length;
+		this.previewHeader.empty();
+		if (total === 0) {
+			this.previewHeader.setText(t('importPreviewEmpty') || '\u9884\u89c8\uff1a\u8bf7\u8f93\u5165\u8981\u5bfc\u5165\u7684\u6620\u5c04');
+			this.previewEl.createDiv('ai-import-previewempty').setText('');
+		} else {
+			const headText = t('importPreviewHead') || '%v \u6761\u6709\u6548 \u00b7 %s \u6761\u91cd\u590d\u5df2\u8df3\u8fc7';
+			this.previewHeader.setText(headText.replace('%v', String(valid.length)).replace('%s', String(skipped.length)));
+		}
+		const body = this.previewEl.querySelector('.ai-import-previewbody') as HTMLElement | null;
+		if (body) {
+			body.empty();
+			for (const v of valid) {
+				const row = body.createDiv('ai-import-previewrow');
+				row.createSpan({ text: v.real, cls: 'ai-import-prevreal' });
+				row.createSpan({ text: ' → ', cls: 'ai-import-prevarrow' });
+				row.createSpan({ text: '[[' + v.code + ']]', cls: 'ai-import-prevcode' });
+			}
+			for (const sk of skipped) {
+				const row = body.createDiv('ai-import-previewrow is-skip');
+				row.createSpan({ text: sk.line, cls: 'ai-import-prevreal' });
+				row.createSpan({ text: ' ' + sk.reason, cls: 'ai-import-prevreason' });
+			}
+		}
+		const willInsert = valid.length;
+		const footText = t('importWillInsert') || '\u5c06\u63d2\u5165 %d \u6761';
+		this.importLabel.setText(footText.replace('%d', String(willInsert)));
+		this.importBtn.setText((t('importDoBtn') || '\u5bfc\u5165 %d \u6761').replace('%d', String(willInsert)));
+		this.importBtn.disabled = willInsert === 0;
+	}
+
+	doImport(): void {
+		const t = (k: string): string => this.plugin.t(k);
+		if (!this.preview || this.preview.valid.length === 0) return;
+		const { valid } = this.preview;
+		if (this.mode === 'overwrite') {
+			this.plugin.settings.mappings = [];
+		}
+		for (const v of valid) {
+			this.plugin.settings.mappings.push(v);
+		}
+		void this.plugin.save();
+		const n = valid.length;
+		const msg = this.mode === 'overwrite' ? (t('imported').replace('%d', String(n))) : (t('importMergeOk').replace('%d', String(n)));
+		new Notice(msg);
+		this.tab.renderTable();
+		this.tab.renderUncatNotice();
+		this.close();
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
+class MappingTableModal extends Modal {
+	plugin: AIAliasPlugin;
+	private tab: AIAliasSettingTab;
+
+	constructor(app: App, plugin: AIAliasPlugin) {
+		super(app);
+		this.plugin = plugin;
+		this.tab = new AIAliasSettingTab(app, plugin);
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		contentEl.empty();
+		const modalRoot = contentEl.closest('.modal') as HTMLElement | null;
+		if (modalRoot) modalRoot.addClass('ai-mapping-modal');
+		const t = (k: string): string => this.plugin.t(k);
+		this.titleEl.setText(t('mappingTitle'));
+		this.tab.buildMappingUI(contentEl);
 	}
 
 	onClose(): void {
@@ -1111,10 +1312,8 @@ class BatchPreviewModal extends Modal {
 	skipBare: boolean;
 	renameTitles: boolean;
 
-	private summaryEl!: HTMLElement;
-	private breakdownEl!: HTMLElement;
 	private listEl!: HTMLElement;
-	private warnEl!: HTMLElement;
+	private infoEl!: HTMLElement;
 	private runBtn!: HTMLButtonElement;
 
 	constructor(app: App, plugin: AIAliasPlugin, direction: BatchDirection, label: string, scans: BatchScan[]) {
@@ -1132,25 +1331,58 @@ class BatchPreviewModal extends Modal {
 		const t = (k: string): string => this.plugin.t(k);
 		this.modalEl.addClass('ai-bpmodal');
 		this.titleEl.setText(this.direction === 'encrypt' ? t('bpEncTitle') : t('bpDecTitle'));
-		contentEl.createEl('p', { cls: 'ai-sub', text: t('bpTarget').replace('%s', this.label) });
+		const subText = (this.direction === 'encrypt' ? (t('bpSubEnc') || '3 \u4e2a\u6587\u4ef6 \u00b7 \u547d\u4e2d 14 \u5904 \u00b7 \u5c06\u81ea\u52a8\u521b\u5efa\u5feb\u7167') : (t('bpSubDec') || '3 \u4e2a\u6587\u4ef6 \u00b7 \u547d\u4e2d 14 \u5904 \u00b7 \u5c06\u81ea\u52a8\u521b\u5efa\u5feb\u7167'));
+		contentEl.createEl('p', { cls: 'ai-sub', text: subText });
 
-		const sum = contentEl.createEl('div', { cls: 'ai-bpsum' });
-		this.summaryEl = sum.createEl('div', { cls: 'ai-bpsum-main' });
-		this.breakdownEl = sum.createEl('div', { cls: 'ai-bpsum-sub' });
+		// Stats bar: 3 large numbers
+		const stats = contentEl.createDiv('ai-bpstats');
+		const statFiles = stats.createDiv('ai-bpstat');
+		statFiles.createDiv('ai-bpstat-num').setText(String(this.scans.length));
+		statFiles.createDiv('ai-bpstat-lbl').setText(t('bpStatFiles') || '\u6587\u4ef6');
+		const statHits = stats.createDiv('ai-bpstat');
+		let totalHits = 0;
+		for (const s of this.scans) {
+			if (this.direction === 'encrypt') totalHits += s.realHits.length;
+			else totalHits += s.wrappedHits.length + s.bareHits.length + s.titleHits.length;
+		}
+		statHits.createDiv('ai-bpstat-num').setText(String(totalHits));
+		statHits.createDiv('ai-bpstat-lbl').setText(t('bpStatHits') || '\u547d\u4e2d');
+		const statBare = stats.createDiv('ai-bpstat');
+		let totalBare = 0;
+		for (const s of this.scans) totalBare += s.bareHits.length;
+		statBare.createDiv('ai-bpstat-num is-bare').setText(String(totalBare));
+		statBare.createDiv('ai-bpstat-lbl').setText(t('bpStatBare') || '\u88f8\u4ee3\u53f7');
 
-		if (this.direction === 'decrypt') {
-			const pol = contentEl.createEl('div', { cls: 'ai-bppolicy' });
-			pol.createEl('div', { cls: 'ai-bppolicy-hint', text: t('bpPolicyHint') });
-			const l1 = pol.createEl('label', { cls: 'ai-bpcheck' });
+		// Settings section
+		const settingsBox = contentEl.createDiv('ai-bpsettings');
+		if (this.direction === 'encrypt') {
+			const l1 = settingsBox.createEl('label', { cls: 'ai-bpcheckrow' });
 			const c1 = l1.createEl('input', { type: 'checkbox' });
-			c1.checked = this.skipBare;
-			l1.createSpan({ text: t('bpSkipBare') });
+			c1.checked = this.plugin.settings.batchSkipFrontmatter;
+			l1.createSpan({ text: t('bpSkipFmLabel') || '\u52a0\u5bc6\u65f6\u8df3\u8fc7 frontmatter' });
 			c1.addEventListener('change', () => {
-				this.skipBare = c1.checked;
+				this.plugin.settings.batchSkipFrontmatter = c1.checked;
+				void this.plugin.save();
+			});
+		} else {
+			const pol = settingsBox.createDiv('ai-bppolicy');
+			const policy = this.plugin.settings.batchBareCodePolicy;
+			pol.createDiv('ai-bppolicy-hint').setText(policy === 'restoreAll' ? t('bpPolicyRestoreAll') : t('bpPolicyHint'));
+			const bareRow = pol.createDiv('ai-bpcheckrow');
+			bareRow.createSpan({ text: t('bpBareLabel') || '\u88f8\u4ee3\u53f7\uff08\u672a\u5305\u88f9\uff09\u5904\u7406' });
+			const sel = bareRow.createEl('select', { cls: 'ai-bpsel' });
+			sel.createEl('option', { text: t('batchBarePolicyConfirm'), value: 'confirmAll' });
+			sel.createEl('option', { text: t('batchBarePolicySkip'), value: 'skip' });
+			sel.createEl('option', { text: t('batchBarePolicyRestore'), value: 'restoreAll' });
+			sel.value = this.plugin.settings.batchBareCodePolicy;
+			sel.addEventListener('change', () => {
+				this.plugin.settings.batchBareCodePolicy = sel.value as 'skip' | 'confirmAll' | 'restoreAll';
+				void this.plugin.save();
+				this.skipBare = this.plugin.settings.batchBareCodePolicy === 'skip';
 				this.renderList();
 				this.refresh();
 			});
-			const l2 = pol.createEl('label', { cls: 'ai-bpcheck' });
+			const l2 = pol.createEl('label', { cls: 'ai-bpcheckrow' });
 			const c2 = l2.createEl('input', { type: 'checkbox' });
 			c2.checked = this.renameTitles;
 			l2.createSpan({ text: t('bpRenameTitles') });
@@ -1159,16 +1391,24 @@ class BatchPreviewModal extends Modal {
 				this.renderList();
 				this.refresh();
 			});
-			pol.createEl('div', { cls: 'ai-bppolicy-warn', text: t('bpRenameWarn') });
+			pol.createDiv('ai-bppolicy-warn').setText(t('bpRenameWarn'));
 		}
 
-		this.listEl = contentEl.createEl('div', { cls: 'ai-bplist' });
-		this.warnEl = contentEl.createEl('p', { cls: 'ai-help ai-help-warn' });
+		// File list section
+		const listWrap = contentEl.createDiv('ai-bplistwrap');
+		listWrap.createDiv('ai-bpsectitle').setText(t('bpFileListTitle') || '\u6587\u4ef6\u6e05\u5355');
+		this.listEl = listWrap.createDiv('ai-bplist');
 
+		// Info bar (purple)
+		this.infoEl = contentEl.createDiv('ai-bpinfo');
+		this.infoEl.setText(t('bpInfoBar') || '\u64cd\u4f5c\u5c06\u4fee\u6539 N \u4e2a\u6587\u4ef6\uff0c\u5df2\u81ea\u52a8\u521b\u5efa\u5feb\u7167\uff0c\u53ef\u968f\u65f6\u64a4\u9500\u3002');
+
+		// Footer
 		const foot = contentEl.createEl('div', { cls: 'ai-foot' });
+		foot.createSpan({ text: '', cls: 'ai-bpfoodsel' });
+		foot.createEl('button', { text: t('cancel') }).addEventListener('click', () => this.close());
 		foot.createEl('button', { text: t('bpSelAll') }).addEventListener('click', () => this.setAll(true));
 		foot.createEl('button', { text: t('bpSelNone') }).addEventListener('click', () => this.setAll(false));
-		foot.createEl('button', { text: t('cancel') }).addEventListener('click', () => this.close());
 		this.runBtn = foot.createEl('button', { text: '', cls: 'mod-cta' });
 		this.runBtn.addEventListener('click', () => this.confirmRun());
 
@@ -1340,48 +1580,23 @@ class BatchPreviewModal extends Modal {
 		const t = (k: string): string => this.plugin.t(k);
 		let files = 0;
 		let n = 0;
-		let w = 0;
-		let b = 0;
-		let ti = 0;
 		for (const s of this.scans) {
 			if (!s.selected || !this.hasPotential(s)) continue;
 			const c = this.counts(s);
 			if (c.n === 0) continue;
 			files++;
 			n += c.n;
-			w += c.w;
-			b += c.b;
-			ti += c.ti;
 		}
-		this.summaryEl.setText(
-			t('bpSummary')
-				.replace('%s', String(this.scans.length))
-				.replace('%c', String(files))
-				.replace('%n', String(n))
-		);
-		if (this.direction === 'decrypt') {
-			this.breakdownEl.setText(
-				t('bpBreakdown').replace('%w', String(w)).replace('%b', String(b)).replace('%t', String(ti))
-			);
-			this.breakdownEl.toggleClass('is-hidden', false);
-		} else {
-			this.breakdownEl.toggleClass('is-hidden', true);
-		}
-
-		this.warnEl.empty();
-		this.warnEl.createSpan({ text: t('bpWarn') });
-		this.warnEl.createEl('br');
-		this.warnEl.createSpan({
-			text: this.plugin.settings.batchBackupEnabled ? t('bpWarnBackup') : t('bpWarnNoBackup')
-		});
-		const many = files > BATCH_MANY;
-		if (many) {
-			this.warnEl.createEl('br');
-			this.warnEl.createSpan({ text: t('bpWarnMany').replace('%d', String(BATCH_MANY)), cls: 'ai-bpdanger' });
-		}
-		this.warnEl.toggleClass('ai-help-danger', many);
-
-		this.runBtn.setText(t('bpRun').replace('%d', String(files)));
+		const selTotal = this.scans.filter((s) => s.selected).length;
+		const totalScans = this.scans.length;
+		const infoText = (t('bpInfoBarFmt') || '\u64cd\u4f5c\u5c06\u4fee\u6539 %d \u4e2a\u6587\u4ef6\uff0c\u5df2\u81ea\u52a8\u521b\u5efa\u5feb\u7167\uff0c\u53ef\u968f\u65f6\u64a4\u9500\u3002').replace('%d', String(files));
+		if (this.infoEl) this.infoEl.setText(infoText);
+		const selLabel = this.modalEl.querySelector('.ai-bpfoodsel') as HTMLElement | null;
+		if (selLabel) selLabel.setText((t('bpSelected') || '\u5df2\u9009 %d / %d \u4e2a\u6587\u4ef6').replace('%d', String(selTotal)).replace('%d', String(totalScans)));
+		const runLabel = this.direction === 'encrypt'
+			? (t('bpRunEnc') || '\u6267\u884c\u52a0\u5bc6\uff08%d \u7bc7\uff09')
+			: (t('bpRunDec') || '\u6267\u884c\u89e3\u5bc6\uff08%d \u7bc7\uff09');
+		this.runBtn.setText(runLabel.replace('%d', String(files)));
 		this.runBtn.disabled = files === 0;
 	}
 
@@ -1447,6 +1662,119 @@ class BatchPreviewModal extends Modal {
 	}
 }
 
+class CategoryModal extends Modal {
+	plugin: AIAliasPlugin;
+	tab: AIAliasSettingTab;
+	mode: 'add' | 'edit';
+	cat?: Category;
+
+	private nameEl!: HTMLInputElement;
+	private prefixEl!: HTMLInputElement;
+	private errEl!: HTMLElement;
+
+	constructor(app: App, plugin: AIAliasPlugin, tab: AIAliasSettingTab, mode: 'add' | 'edit', cat?: Category) {
+		super(app);
+		this.plugin = plugin;
+		this.tab = tab;
+		this.mode = mode;
+		this.cat = cat;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		const t = (k: string): string => this.plugin.t(k);
+		this.titleEl.setText(this.mode === 'add' ? t('catAddTitle') : t('catEditTitle'));
+
+		const box = contentEl.createEl('div', { cls: 'ai-cat-form' });
+		const nf = box.createEl('div', { cls: 'ai-fld' });
+		nf.createEl('label', { text: t('catNamePh') });
+		this.nameEl = nf.createEl('input', { type: 'text', placeholder: t('catNamePh') });
+		const pf = box.createEl('div', { cls: 'ai-fld' });
+		pf.createEl('label', { text: t('catPrefixPh') });
+		this.prefixEl = pf.createEl('input', { type: 'text', placeholder: t('catPrefixPh') });
+		this.errEl = box.createEl('div', { cls: 'ai-hint' });
+
+		if (this.mode === 'edit' && this.cat) {
+			this.nameEl.value = this.cat.name;
+			this.prefixEl.value = this.cat.prefix;
+		}
+		this.prefixEl.addEventListener('input', () => {
+			this.prefixEl.value = this.prefixEl.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+		});
+		this.nameEl.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				this.doSave();
+			}
+		});
+		this.prefixEl.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				this.doSave();
+			}
+		});
+
+		const foot = contentEl.createEl('div', { cls: 'ai-foot' });
+		if (this.mode === 'edit' && this.cat) {
+			const delBtn = foot.createEl('button', { text: t('catDel'), cls: 'mod-warning' });
+			delBtn.addEventListener('click', () => {
+				const c = this.cat;
+				if (c) {
+					this.tab.deleteCategory(c);
+					this.close();
+				}
+			});
+		}
+		foot.createEl('button', { text: t('cancel') }).addEventListener('click', () => this.close());
+		const saveBtn = foot.createEl('button', { text: t('save'), cls: 'mod-cta' });
+		saveBtn.addEventListener('click', () => this.doSave());
+	}
+
+	private setErr(msg: string): void {
+		this.errEl.setText(msg);
+		this.errEl.className = 'ai-hint ai-err';
+	}
+
+	private doSave(): void {
+		const t = (k: string): string => this.plugin.t(k);
+		const name = this.nameEl.value.trim();
+		let prefix = this.prefixEl.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+		const cats = this.plugin.settings.categories;
+		if (!name) {
+			this.setErr(t('catNameErr'));
+			return;
+		}
+		if (this.mode === 'edit' && this.cat) {
+			const c = this.cat;
+			if (!prefix) prefix = c.prefix;
+			if (cats.some((x) => x.id !== c.id && x.prefix === prefix)) {
+				this.setErr(t('catPrefixDup'));
+				return;
+			}
+			c.name = name;
+			c.prefix = prefix;
+			void this.plugin.save();
+			new Notice(t('catPrefixKept'));
+		} else {
+			if (!prefix) prefix = name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+			if (!prefix) {
+				this.setErr(t('catPrefixErr'));
+				return;
+			}
+			if (cats.some((cc) => cc.prefix === prefix)) {
+				this.setErr(t('catPrefixDup'));
+				return;
+			}
+			this.plugin.settings.categories.push({ id: 'cat_' + Date.now().toString(36), name, prefix, seq: 0 });
+			void this.plugin.save();
+		}
+		this.tab.renderCategoryBadges();
+		this.tab.refreshFilterOptions();
+		this.tab.renderTable();
+		this.close();
+	}
+}
+
 class AIAliasSettingTab extends PluginSettingTab {
 	plugin: AIAliasPlugin;
 
@@ -1469,7 +1797,6 @@ class AIAliasSettingTab extends PluginSettingTab {
 	private addRealEl!: HTMLInputElement;
 	private addCodeEl!: HTMLInputElement;
 	private addCatEl!: HTMLSelectElement;
-	private addManualEl!: HTMLInputElement;
 	private addHintEl!: HTMLElement;
 	private filterSel!: HTMLSelectElement;
 	private catBarEl!: HTMLElement;
@@ -1482,143 +1809,190 @@ class AIAliasSettingTab extends PluginSettingTab {
 	}
 
 	display(): void {
+		const t = (k: string): string => this.plugin.t(k);
 		const { containerEl } = this;
 		containerEl.empty();
+		containerEl.addClass('ai-settings-v2');
+
+		// ===== Header =====
+		const header = containerEl.createDiv('ai-v2-header');
+		const titleGrp = header.createDiv('ai-v2-title');
+		titleGrp.createDiv('ai-v2-h2').setText(t('headerTitle'));
+		titleGrp.createDiv('ai-v2-sub').setText(t('headerSub'));
+		const headerRight = header.createDiv('ai-v2-headerright');
+		const langWrap = headerRight.createDiv('ai-v2-lang');
+		const langEn = langWrap.createEl('button', { text: 'English', type: 'button' });
+		const langZh = langWrap.createEl('button', { text: '中文', type: 'button' });
+		const syncLang = (): void => {
+			langEn.toggleClass('is-active', this.plugin.settings.language === 'en');
+			langZh.toggleClass('is-active', this.plugin.settings.language === 'zh');
+		};
+		syncLang();
+		langEn.addEventListener('click', () => {
+			this.plugin.settings.language = 'en';
+			void this.plugin.save();
+			syncLang();
+			this.display();
+		});
+		langZh.addEventListener('click', () => {
+			this.plugin.settings.language = 'zh';
+			void this.plugin.save();
+			syncLang();
+			this.display();
+		});
+		const closeBtn = headerRight.createEl('button', { text: '\u00d7', type: 'button', cls: 'ai-v2-close', attr: { 'aria-label': t('closeAria') } });
+		// Obsidian settings tab has no programmatic close; the X is decorative.
+
+		// ===== Body =====
+		const body = containerEl.createDiv('ai-v2-body');
+		const leftNav = body.createDiv('ai-v2-nav');
+		const rightContent = body.createDiv('ai-v2-content');
+
+		const navItems: { key: string; label: string; target: string }[] = [
+			{ key: 'general', label: t('navGeneral'), target: 'sec-general' },
+			{ key: 'catmap', label: t('navCatMap'), target: 'sec-catmap' },
+			{ key: 'batch', label: t('navBatch'), target: 'sec-batch' },
+			{ key: 'data', label: t('navData'), target: 'sec-data' }
+		];
+		const navButtons: HTMLButtonElement[] = [];
+		for (const item of navItems) {
+			const btn = leftNav.createEl('button', { text: item.label, type: 'button', cls: 'ai-v2-navitem' });
+			btn.addEventListener('click', () => {
+				navButtons.forEach((b) => b.toggleClass('is-active', b === btn));
+				const target = rightContent.querySelector('#' + item.target);
+				if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+			});
+			navButtons.push(btn);
+		}
+		navButtons[1].addClass('is-active');
+
+		// ===== Sec_通用 (General) =====
+		const secGeneral = rightContent.createDiv('ai-v2-section');
+		secGeneral.id = 'sec-general';
+		new Setting(secGeneral).setName(t('secGeneral')).setHeading();
+		new Setting(secGeneral).setName(t('language')).setDesc(t('languageDesc')).addDropdown((dd) => {
+			dd.addOption('en', 'English').addOption('zh', '中文').setValue(this.plugin.settings.language).onChange(async (v) => {
+				this.plugin.settings.language = v as 'en' | 'zh';
+				await this.plugin.save();
+				this.display();
+			});
+		});
+		new Setting(secGeneral)
+			.setName(t('pasteUnmask'))
+			.setDesc(t('pasteUnmaskDesc'))
+			.addToggle((tg) => tg.setValue(this.plugin.settings.pasteUnmask).onChange(async (v) => {
+				this.plugin.settings.pasteUnmask = v;
+				await this.plugin.save();
+			}));
+		const wrapRow = secGeneral.createDiv('ai-v2-wraprow');
+		wrapRow.createDiv('ai-v2-wraplabel').setText(t('prefix') + ' / ' + t('suffix'));
+		const wrapInputs = wrapRow.createDiv('ai-v2-wrapinputs');
+		const preInp = wrapInputs.createEl('input', { type: 'text', value: this.plugin.settings.prefix, cls: 'ai-v2-pre' });
+		preInp.addEventListener('change', async () => {
+			this.plugin.settings.prefix = preInp.value || '[[';
+			await this.plugin.save();
+		});
+		wrapInputs.createSpan({ text: ' ' + t('realName') + ' ', cls: 'ai-v2-wrapmid' });
+		const sufInp = wrapInputs.createEl('input', { type: 'text', value: this.plugin.settings.suffix, cls: 'ai-v2-suf' });
+		sufInp.addEventListener('change', async () => {
+			this.plugin.settings.suffix = sufInp.value || ']]';
+			await this.plugin.save();
+		});
+
+		// ===== Sec_分类与映射 (Categories & Mappings combined) =====
+		const secCatMap = rightContent.createDiv('ai-v2-section');
+		secCatMap.id = 'sec-catmap';
+		new Setting(secCatMap).setName(t('navCatMap')).setHeading();
+
+		// Category sub-section
+		const secCat = secCatMap.createDiv('ai-v2-subsection');
+		new Setting(secCat).setName(t('secCategory')).setHeading();
+		secCat.createDiv('ai-v2-note').setText(t('catPrefixDesc'));
+		this.catBarEl = secCat.createDiv('ai-v2-catbar');
+		this.renderCategoryBadges();
+		this.uncatEl = secCat.createDiv('ai-v2-uncat is-hidden');
+		this.renderUncatNotice();
+
+		// Mapping sub-section
+		const secMap = secCatMap.createDiv('ai-v2-subsection');
+		secMap.id = 'sec-mapping';
+		new Setting(secMap).setName(t('secMapping')).setHeading();
+		this.buildMappingUI(secMap);
+
+		// ===== Sec_批量操作 (Batch operations) =====
+		const secBatch = rightContent.createDiv('ai-v2-section');
+		secBatch.id = 'sec-batch';
+		new Setting(secBatch).setName(t('secBatch')).setHeading();
+		secBatch.createDiv('ai-v2-note').setText('v1.7.0 \u00b7 ' + t('batchHeading'));
+		new Setting(secBatch).setName(t('batchIncludeSub')).setDesc(t('batchIncludeSubDesc')).addToggle((tg) => tg.setValue(this.plugin.settings.batchIncludeSubfolders).onChange(async (v) => {
+			this.plugin.settings.batchIncludeSubfolders = v;
+			await this.plugin.save();
+		}));
+		new Setting(secBatch).setName(t('batchBarePolicy')).setDesc(t('batchBarePolicyDesc')).addDropdown((dd) => {
+			dd.addOption('confirmAll', t('batchBarePolicyConfirm'))
+				.addOption('skip', t('batchBarePolicySkip'))
+				.addOption('restoreAll', t('batchBarePolicyRestore'))
+				.setValue(this.plugin.settings.batchBareCodePolicy)
+				.onChange(async (v) => {
+					this.plugin.settings.batchBareCodePolicy = v as 'skip' | 'confirmAll' | 'restoreAll';
+					await this.plugin.save();
+				});
+		});
+		new Setting(secBatch).setName(t('batchRename')).setDesc(t('batchRenameDesc')).addToggle((tg) => tg.setValue(this.plugin.settings.batchRenameTitles).onChange(async (v) => {
+			this.plugin.settings.batchRenameTitles = v;
+			await this.plugin.save();
+		}));
+		new Setting(secBatch).setName(t('batchSkipFm')).setDesc(t('batchSkipFmDesc')).addToggle((tg) => tg.setValue(this.plugin.settings.batchSkipFrontmatter).onChange(async (v) => {
+			this.plugin.settings.batchSkipFrontmatter = v;
+			await this.plugin.save();
+		}));
+		new Setting(secBatch).setName(t('batchBackup')).setDesc(t('batchBackupDesc')).addToggle((tg) => tg.setValue(this.plugin.settings.batchBackupEnabled).onChange(async (v) => {
+			this.plugin.settings.batchBackupEnabled = v;
+			await this.plugin.save();
+		}));
+		new Setting(secBatch).setName(t('batchBackupKeepName')).setDesc(t('batchBackupKeepDesc')).addText((tx) => {
+			tx.setValue(String(this.plugin.settings.batchBackupKeep));
+			tx.inputEl.type = 'number';
+			tx.inputEl.min = '1';
+			tx.inputEl.max = '20';
+			tx.onChange(async (v) => {
+				const n = parseInt(v, 10);
+				if (!isNaN(n) && n >= 1 && n <= 20) {
+					this.plugin.settings.batchBackupKeep = n;
+					await this.plugin.save();
+				}
+			});
+		});
+
+		// ===== Sec_数据管理 (Data management) - import/export =====
+		const secData = rightContent.createDiv('ai-v2-section');
+		secData.id = 'sec-data';
+		new Setting(secData).setName(t('navData')).setHeading();
+		new Setting(secData).setName(t('exportBtn')).setDesc(t('importExportDesc')).addButton((b) => b.setButtonText(t('exportBtn')).onClick(() => this.exportMappings()));
+		new Setting(secData).setName(t('importBtn')).setDesc(t('importExportDesc')).addButton((b) => b.setButtonText(t('importBtn')).onClick(() => new ImportModal(this.app, this.plugin, this).open()));
+	}
+
+	private exportMappings(): void {
+		const t = (k: string): string => this.plugin.t(k);
+		void navigator.clipboard
+			.writeText(JSON.stringify(this.plugin.settings, null, 2))
+			.then(() => new Notice(t('prefixCopied')))
+			.catch((e) => new Notice(t('copyFail') + (e instanceof Error ? e.message : String(e))));
+	}
+
+	private buildCategoryUI(container: HTMLElement): void {
+		const t = (k: string): string => this.plugin.t(k);
+		this.catBarEl = container.createEl('div', { cls: 'ai-catbar' });
+		this.uncatEl = container.createEl('div', { cls: 'ai-uncat is-hidden' });
+		container.createEl('div', { cls: 'ai-note', text: t('catPrefixDesc') });
+		this.renderCategoryBadges();
+		this.renderUncatNotice();
+	}
+
+	buildMappingUI(container: HTMLElement): void {
 		const t = (k: string): string => this.plugin.t(k);
 
-		new Setting(containerEl).setName(t('title')).setHeading();
-
-		new Setting(containerEl)
-			.setName(t('language'))
-			.setDesc(t('languageDesc'))
-			.addDropdown((d) =>
-				d
-					.addOption('en', 'English')
-					.addOption('zh', '中文')
-					.setValue(this.plugin.settings.language)
-					.onChange((v) => {
-					this.plugin.settings.language = v as 'en' | 'zh';
-					void this.plugin.save();
-						this.display();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName(t('prefix'))
-			.setDesc(t('prefixDesc'))
-			.addText((tc) =>
-				tc.setPlaceholder('[[').setValue(this.plugin.settings.prefix).onChange((v) => {
-					this.plugin.settings.prefix = v;
-					void this.plugin.save();
-					this.renderTable();
-				})
-			);
-
-		new Setting(containerEl)
-			.setName(t('suffix'))
-			.setDesc(t('suffixDesc'))
-			.addText((tc) =>
-				tc.setPlaceholder(']]').setValue(this.plugin.settings.suffix).onChange((v) => {
-					this.plugin.settings.suffix = v;
-					void this.plugin.save();
-					this.renderTable();
-				})
-			);
-
-		new Setting(containerEl)
-			.setName(t('importExport'))
-			.setDesc(t('importExportDesc'))
-			.addButton((btn) =>
-				btn.setButtonText(t('exportBtn')).onClick(() => {
-					void navigator.clipboard
-						.writeText(JSON.stringify(this.plugin.settings, null, 2))
-						.then(() => new Notice(t('prefixCopied')))
-						.catch((e) => new Notice(t('copyFail') + (e instanceof Error ? e.message : String(e))));
-				})
-			)
-			.addButton((btn) =>
-				btn.setButtonText(t('importBtn')).onClick(() => new ImportModal(this.app, this.plugin, this).open())
-			);
-
-		// ---- Batch operations (v1.7.0) ----
-		new Setting(containerEl).setName(t('batchHeading')).setHeading();
-
-		new Setting(containerEl)
-			.setName(t('batchIncludeSub'))
-			.setDesc(t('batchIncludeSubDesc'))
-			.addToggle((tg) =>
-				tg.setValue(this.plugin.settings.batchIncludeSubfolders).onChange((v) => {
-					this.plugin.settings.batchIncludeSubfolders = v;
-					void this.plugin.save();
-				})
-			);
-
-		new Setting(containerEl)
-			.setName(t('batchBarePolicy'))
-			.setDesc(t('batchBarePolicyDesc'))
-			.addDropdown((d) =>
-				d
-					.addOption('confirmAll', t('batchBarePolicyConfirm'))
-					.addOption('skip', t('batchBarePolicySkip'))
-					.setValue(this.plugin.settings.batchBareCodePolicy)
-					.onChange((v) => {
-						this.plugin.settings.batchBareCodePolicy = v === 'skip' ? 'skip' : 'confirmAll';
-						void this.plugin.save();
-					})
-			);
-
-		new Setting(containerEl)
-			.setName(t('batchRename'))
-			.setDesc(t('batchRenameDesc'))
-			.addToggle((tg) =>
-				tg.setValue(this.plugin.settings.batchRenameTitles).onChange((v) => {
-					this.plugin.settings.batchRenameTitles = v;
-					void this.plugin.save();
-				})
-			);
-
-		new Setting(containerEl)
-			.setName(t('batchSkipFm'))
-			.setDesc(t('batchSkipFmDesc'))
-			.addToggle((tg) =>
-				tg.setValue(this.plugin.settings.batchSkipFrontmatter).onChange((v) => {
-					this.plugin.settings.batchSkipFrontmatter = v;
-					void this.plugin.save();
-				})
-			);
-
-		new Setting(containerEl)
-			.setName(t('batchBackup'))
-			.setDesc(t('batchBackupDesc'))
-			.addToggle((tg) =>
-				tg.setValue(this.plugin.settings.batchBackupEnabled).onChange((v) => {
-					this.plugin.settings.batchBackupEnabled = v;
-					void this.plugin.save();
-				})
-			);
-
-		new Setting(containerEl)
-			.setName(t('batchBackupKeepName'))
-			.setDesc(t('batchBackupKeepDesc'))
-			.addText((tc) =>
-				tc.setValue(String(this.plugin.settings.batchBackupKeep)).onChange((v) => {
-					const n = Number(v);
-					if (!Number.isFinite(n)) return;
-					this.plugin.settings.batchBackupKeep = Math.min(20, Math.max(1, Math.floor(n)));
-					void this.plugin.save();
-				})
-			);
-
-		// ---- Category manager (lightweight) ----
-		new Setting(containerEl).setName(t('catTitle')).setHeading();
-		this.catBarEl = containerEl.createEl('div', { cls: 'ai-catbar' });
-		this.uncatEl = containerEl.createEl('div', { cls: 'ai-uncat is-hidden' });
-		containerEl.createEl('div', { cls: 'ai-note', text: t('catPrefixDesc') });
-
-		// ---- Mapping manager (main view) ----
-		new Setting(containerEl).setName(t('mappingTitle')).setHeading();
-
-		const toolbar = containerEl.createEl('div', { cls: 'ai-toolbar' });
+		const toolbar = container.createEl('div', { cls: 'ai-toolbar' });
 		const searchWrap = toolbar.createEl('div', { cls: 'ai-search' });
 		this.searchEl = searchWrap.createEl('input', { type: 'text', placeholder: t('searchPh') });
 		this.searchEl.value = this.searchTerm;
@@ -1636,61 +2010,53 @@ class AIAliasSettingTab extends PluginSettingTab {
 		});
 		this.countEl = toolbar.createEl('span', { cls: 'ai-count' });
 
-		const btnBar = containerEl.createEl('div', { cls: 'ai-btns' });
-		const addB = btnBar.createEl('button', { text: t('add'), cls: 'mod-cta' });
+		const btnBar = container.createEl('div', { cls: 'ai-btns' });
+		const leftGrp = btnBar.createEl('div', { cls: 'ai-btns-left' });
+		const addB = leftGrp.createEl('button', { text: t('add'), cls: 'mod-cta' });
 		addB.addEventListener('click', () => this.toggleAddForm());
-		const batchB = btnBar.createEl('button', { text: t('batchAdd') });
+		const batchB = leftGrp.createEl('button', { text: t('batchAdd') });
 		batchB.addEventListener('click', () => new BatchAddModal(this.app, this.plugin, this).open());
-		this.delSelBtn = btnBar.createEl('button', { text: t('delSel'), cls: 'mod-warning' });
+		const rightGrp = btnBar.createEl('div', { cls: 'ai-btns-right' });
+		this.delSelBtn = rightGrp.createEl('button', { text: t('delSel'), cls: 'mod-warning' });
 		this.delSelBtn.addEventListener('click', () => this.deleteSelected());
-		const clearB = btnBar.createEl('button', { text: t('clearAll'), cls: 'mod-warning' });
+		const clearB = rightGrp.createEl('button', { text: t('clearAll'), cls: 'mod-warning' });
 		clearB.addEventListener('click', () => this.clearAll());
 
-		this.addFormEl = containerEl.createEl('div', { cls: 'ai-addform is-hidden' });
-		const f1 = this.addFormEl.createEl('div', { cls: 'ai-fld' });
-		f1.createEl('label', { text: t('realName') });
-		this.addRealEl = f1.createEl('input', { type: 'text', placeholder: t('realPlaceholder') });
+		this.addFormEl = container.createEl('div', { cls: 'ai-addform is-hidden' });
+		const r1 = this.addFormEl.createEl('div', { cls: 'ai-frow' });
+		r1.createEl('label', { text: t('realName') });
+		this.addRealEl = r1.createEl('input', { type: 'text', placeholder: t('realPlaceholder') });
 		this.addRealEl.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter') {
 				e.preventDefault();
 				this.addCatEl.focus();
 			}
 		});
-		const fCat = this.addFormEl.createEl('div', { cls: 'ai-fld' });
-		fCat.createEl('label', { text: t('addCat') });
-		this.addCatEl = fCat.createEl('select', { cls: 'ai-cat-sel' });
+		const rCat = this.addFormEl.createEl('div', { cls: 'ai-frow' });
+		rCat.createEl('label', { text: t('addCat') });
+		this.addCatEl = rCat.createEl('select', { cls: 'ai-cat-sel' });
 		this.fillCatSelect(this.addCatEl, true, this.plugin.settings.categories[0]?.id ?? FILTER_UNCAT);
 		this.addCatEl.addEventListener('change', () => this.updateAutoPreview());
-		const fMan = this.addFormEl.createEl('div', { cls: 'ai-fld' });
-		const manLabel = fMan.createEl('label', { cls: 'ai-manual-label' });
-		this.addManualEl = manLabel.createEl('input', { type: 'checkbox' });
-		manLabel.createSpan({ text: ' ' + t('manualCode') });
-		this.addCodeEl = fMan.createEl('input', { type: 'text', placeholder: t('codePlaceholder'), cls: 'ai-code-in is-hidden' });
+		const rCode = this.addFormEl.createEl('div', { cls: 'ai-frow' });
+		rCode.createEl('label', { text: t('codeName') });
+		this.addCodeEl = rCode.createEl('input', { type: 'text', placeholder: t('codePlaceholderAuto') });
+		this.addCodeEl.addEventListener('input', () => this.updateAutoPreview());
 		this.addCodeEl.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter') {
 				e.preventDefault();
 				this.saveInlineAdd();
 			}
 		});
-		this.addManualEl.addEventListener('change', () => {
-			this.addCodeEl.toggleClass('is-hidden', !this.addManualEl.checked);
-			this.updateAutoPreview();
-		});
-		const f3 = this.addFormEl.createEl('div', { cls: 'ai-fld' });
-		f3.createEl('label', { text: ' ' });
-		f3.createEl('button', { text: t('addSave'), cls: 'mod-cta' }).addEventListener('click', () => this.saveInlineAdd());
-		const f4 = this.addFormEl.createEl('div', { cls: 'ai-fld' });
-		f4.createEl('label', { text: ' ' });
-		f4.createEl('button', { text: t('cancel') }).addEventListener('click', () => this.toggleAddForm(true));
+		const rAct = this.addFormEl.createEl('div', { cls: 'ai-frow ai-frow-act' });
+		rAct.createEl('button', { text: t('addSave'), cls: 'mod-cta' }).addEventListener('click', () => this.saveInlineAdd());
+		rAct.createEl('button', { text: t('cancel') }).addEventListener('click', () => this.toggleAddForm(true));
 		this.addHintEl = this.addFormEl.createEl('div', { cls: 'ai-hint' });
 
-		this.tableEl = containerEl.createEl('div', { cls: 'ai-table' });
-		this.pagerEl = containerEl.createEl('div', { cls: 'ai-pager' });
+		this.tableEl = container.createEl('div', { cls: 'ai-table' });
+		this.pagerEl = container.createEl('div', { cls: 'ai-pager' });
 
-		containerEl.createEl('div', { cls: 'ai-note', text: t('crudNote') });
+		container.createEl('div', { cls: 'ai-note', text: t('crudNote') });
 
-		this.renderCategoryBar();
-		this.renderUncatNotice();
 		this.renderTable();
 	}
 
@@ -1725,85 +2091,23 @@ class AIAliasSettingTab extends PluginSettingTab {
 		return v === FILTER_UNCAT || v === FILTER_ALL || !v ? null : v;
 	}
 
-	private renderCategoryBar(): void {
+	renderCategoryBadges(): void {
 		if (!this.catBarEl) return;
 		const t = (k: string): string => this.plugin.t(k);
 		this.catBarEl.empty();
-		const chips = this.catBarEl.createEl('div', { cls: 'ai-chips' });
+		const badges = this.catBarEl.createEl('div', { cls: 'ai-cat-badges' });
 		for (const c of this.plugin.settings.categories) {
-			const chip = chips.createEl('div', { cls: 'ai-chip' });
-			const nameIn = chip.createEl('input', { type: 'text', value: c.name, cls: 'ai-chip-name' });
-			nameIn.addEventListener('change', () => {
-				const v = nameIn.value.trim();
-				if (!v) {
-					nameIn.value = c.name;
-					return;
-				}
-				c.name = v;
-				void this.plugin.save();
-				this.refreshFilterOptions();
-			});
-			const preIn = chip.createEl('input', { type: 'text', value: c.prefix, cls: 'ai-chip-prefix' });
-			preIn.addEventListener('change', () => this.onPrefixChange(c, preIn));
-			const del = chip.createEl('button', { cls: 'ai-chip-del' });
-			setIcon(del, 'x');
-			del.setAttribute('aria-label', t('catDel'));
-			del.addEventListener('click', () => this.deleteCategory(c));
+			const b = badges.createEl('button', { type: 'button', cls: 'ai-cat-badge ' + this.pillClass(c) });
+			b.setAttribute('aria-label', t('catEditTitle') + ': ' + c.name);
+			b.createSpan({ text: c.name });
+			b.createSpan({ text: ' ' + c.prefix, cls: 'ai-cat-badge-prefix' });
+			b.addEventListener('click', () => new CategoryModal(this.app, this.plugin, this, 'edit', c).open());
 		}
-		const addRow = this.catBarEl.createEl('div', { cls: 'ai-addcat' });
-		const nIn = addRow.createEl('input', { type: 'text', placeholder: t('catNamePh') });
-		const pIn = addRow.createEl('input', { type: 'text', placeholder: t('catPrefixPh') });
-		const addBtn = addRow.createEl('button', { text: '+ ' + t('catAdd'), cls: 'mod-cta' });
-		addBtn.addEventListener('click', () => this.addCategory(nIn, pIn));
+		const addBtn = this.catBarEl.createEl('button', { text: '+ ' + t('catAdd'), cls: 'mod-cta' });
+		addBtn.addEventListener('click', () => new CategoryModal(this.app, this.plugin, this, 'add').open());
 	}
 
-	private onPrefixChange(c: Category, inp: HTMLInputElement): void {
-		const t = (k: string): string => this.plugin.t(k);
-		const v = inp.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-		if (!v) {
-			inp.value = c.prefix;
-			return;
-		}
-		if (this.plugin.settings.categories.some((x) => x.id !== c.id && x.prefix === v)) {
-			new Notice(t('catPrefixDup'));
-			inp.value = c.prefix;
-			return;
-		}
-		c.prefix = v;
-		inp.value = v;
-		void this.plugin.save();
-		new Notice(t('catPrefixKept'));
-		this.refreshFilterOptions();
-		this.renderTable();
-	}
-
-	private addCategory(nIn: HTMLInputElement, pIn: HTMLInputElement): void {
-		const t = (k: string): string => this.plugin.t(k);
-		const name = nIn.value.trim();
-		let prefix = pIn.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-		if (!name) {
-			new Notice(t('catNameErr'));
-			return;
-		}
-		if (!prefix) prefix = name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
-		if (!prefix) {
-			new Notice(t('catPrefixErr'));
-			return;
-		}
-		if (this.plugin.settings.categories.some((cc) => cc.prefix === prefix)) {
-			new Notice(t('catPrefixDup'));
-			return;
-		}
-		this.plugin.settings.categories.push({ id: 'cat_' + Date.now().toString(36), name, prefix, seq: 0 });
-		void this.plugin.save();
-		nIn.value = '';
-		pIn.value = '';
-		this.renderCategoryBar();
-		this.refreshFilterOptions();
-		this.renderTable();
-	}
-
-	private deleteCategory(c: Category): void {
+	deleteCategory(c: Category): void {
 		const t = (k: string): string => this.plugin.t(k);
 		const n = this.plugin.settings.mappings.filter((m) => m.category === c.id).length;
 		if (n > 0) {
@@ -1819,12 +2123,12 @@ class AIAliasSettingTab extends PluginSettingTab {
 		}
 		this.plugin.settings.categories = this.plugin.settings.categories.filter((x) => x.id !== c.id);
 		void this.plugin.save();
-		this.renderCategoryBar();
+		this.renderCategoryBadges();
 		this.refreshFilterOptions();
 		this.renderTable();
 	}
 
-	private refreshFilterOptions(): void {
+	refreshFilterOptions(): void {
 		if (this.filterSel) {
 			const cur = this.filterSel.value;
 			this.fillCatSelect(this.filterSel, true, cur, true);
@@ -1879,8 +2183,6 @@ class AIAliasSettingTab extends PluginSettingTab {
 		} else {
 			this.addRealEl.value = '';
 			this.addCodeEl.value = '';
-			this.addManualEl.checked = false;
-			this.addCodeEl.toggleClass('is-hidden', true);
 			this.addCatEl.value = this.plugin.settings.categories[0]?.id ?? FILTER_UNCAT;
 			this.updateAutoPreview();
 		}
@@ -1889,11 +2191,12 @@ class AIAliasSettingTab extends PluginSettingTab {
 	private updateAutoPreview(): void {
 		const t = (k: string): string => this.plugin.t(k);
 		const cat = this.plugin.categoryById(this.addCatEl.value);
-		if (cat && !this.addManualEl.checked) {
+		const codeVal = this.addCodeEl.value.trim();
+		if (cat && !codeVal) {
 			const preview = cat.prefix + String(cat.seq + 1).padStart(3, '0');
 			this.addHintEl.setText(t('autoPreview').replace('%c', this.plugin.wrap(preview)));
 			this.addHintEl.className = 'ai-hint';
-		} else if (this.addManualEl.checked) {
+		} else if (codeVal) {
 			this.addHintEl.setText('');
 		} else {
 			this.addHintEl.setText(t('needCat'));
@@ -1949,14 +2252,13 @@ class AIAliasSettingTab extends PluginSettingTab {
 		const table = tableEl.createEl('table', { cls: 'ai-alias-tbl' });
 		const thead = table.createEl('thead');
 		const htr = thead.createEl('tr');
-		htr.createEl('th', { text: '' });
-		const thReal = htr.createEl('th', { text: t('thReal') + this.sortIndicator('real') });
+		htr.createEl('th', { cls: 'ai-col-cb' });
+		const thReal = htr.createEl('th', { text: t('thReal') + this.sortIndicator('real'), cls: 'ai-sortable' });
 		thReal.addEventListener('click', () => this.toggleSort('real'));
-		htr.createEl('th', { text: t('thCat') });
-		const thCode = htr.createEl('th', { text: t('thCode') + this.sortIndicator('code') });
+		htr.createEl('th', { text: t('thCat'), cls: 'ai-col-cat' });
+		const thCode = htr.createEl('th', { text: t('thCode') + this.sortIndicator('code'), cls: 'ai-sortable' });
 		thCode.addEventListener('click', () => this.toggleSort('code'));
-		thCode.addClass('ai-right');
-		htr.createEl('th', { text: t('actions') }).addClass('ai-right');
+		htr.createEl('th', { text: t('actions'), cls: 'ai-col-act' });
 
 		const tbody = table.createEl('tbody');
 		if (this.plugin.settings.mappings.length === 0) {
@@ -1980,57 +2282,74 @@ class AIAliasSettingTab extends PluginSettingTab {
 		for (const m of items) {
 			const tr = tbody.createEl('tr');
 			if (this.selected.has(m.i)) tr.addClass('ai-sel');
-			const tdCb = tr.createEl('td');
+			const tdCb = tr.createEl('td', { cls: 'ai-col-cb' });
+			const cb = tdCb.createEl('input', { type: 'checkbox' });
+			cb.checked = this.selected.has(m.i);
+			cb.addEventListener('change', (e) => {
+				const checked = (e.target as HTMLInputElement).checked;
+				if (checked) this.selected.add(m.i);
+				else this.selected.delete(m.i);
+				tr.toggleClass('ai-sel', checked);
+				this.updateBulk();
+			});
 			if (this.editing === m.i) {
-				// leave checkbox cell empty while editing
-			} else {
-				const cb = tdCb.createEl('input', { type: 'checkbox' });
-				cb.checked = this.selected.has(m.i);
-				cb.addEventListener('change', (e) => {
-					const checked = (e.target as HTMLInputElement).checked;
-					if (checked) this.selected.add(m.i);
-					else this.selected.delete(m.i);
-					tr.toggleClass('ai-sel', checked);
-					this.updateBulk();
-				});
-			}
-			if (this.editing === m.i) {
-				const tdR = tr.createEl('td');
-				const inR = tdR.createEl('input', { type: 'text', cls: 'ai-edit-in' });
-				inR.value = m.real;
-				const tdCat = tr.createEl('td');
+				const tdReal = tr.createEl('td', { cls: 'ai-col-real' });
+				const inR = tdReal.createEl('input', { type: 'text', cls: 'ai-mreal-edit', value: m.real });
+				const tdCat = tr.createEl('td', { cls: 'ai-col-cat' });
 				const sel = tdCat.createEl('select', { cls: 'ai-cat-sel' });
 				this.fillCatSelect(sel, true, m.category || FILTER_UNCAT);
-				const tdC = tr.createEl('td');
-				tdC.createEl('span', { text: this.plugin.wrap(m.code), cls: 'ai-code' });
-				const tdA = tr.createEl('td');
-				tdA.addClass('ai-right');
-				tdA.createEl('button', { text: t('addSave'), cls: 'mod-cta' }).addEventListener('click', () =>
-					this.saveEdit(m.i, inR.value, sel.value)
-				);
-				tdA.createEl('button', { text: t('cancel') }).addEventListener('click', () => {
+				const tdCode = tr.createEl('td', { cls: 'ai-col-code' });
+				const fullCodeE = this.plugin.wrap(m.code);
+				tdCode.createEl('code', { text: fullCodeE, cls: 'ai-mcode', title: fullCodeE });
+				const tdAct = tr.createEl('td', { cls: 'ai-col-act' });
+				const saveBtn = tdAct.createEl('button', { cls: 'ai-icn' });
+				setIcon(saveBtn, 'check');
+				saveBtn.setAttribute('aria-label', t('save'));
+				saveBtn.addEventListener('click', () => this.saveEdit(m.i, inR.value, sel.value));
+				const cancelBtn = tdAct.createEl('button', { cls: 'ai-icn' });
+				setIcon(cancelBtn, 'x');
+				cancelBtn.setAttribute('aria-label', t('cancel'));
+				cancelBtn.addEventListener('click', () => {
 					this.editing = null;
 					this.renderTable();
 				});
 			} else {
-				tr.createEl('td', { text: m.real });
+				const tdReal = tr.createEl('td', { cls: 'ai-col-real', text: m.real });
+				tdReal.setAttribute('title', m.real);
+				const tdCat = tr.createEl('td', { cls: 'ai-col-cat' });
 				const cat = this.plugin.categoryById(m.category);
-				tr.createEl('td', { text: cat ? cat.name : t('noCat') });
-				const tdC = tr.createEl('td', { text: this.plugin.wrap(m.code) });
-				tdC.addClass('ai-code');
-				const tdA = tr.createEl('td');
-				tdA.addClass('ai-right');
-				tdA.createEl('button', { text: t('edit') }).addEventListener('click', () => {
+				tdCat.createEl('span', {
+					text: cat ? cat.name : t('noCat'),
+					cls: 'ai-pill ' + this.pillClass(cat)
+				});
+				const tdCode = tr.createEl('td', { cls: 'ai-col-code' });
+				const fullCode = this.plugin.wrap(m.code);
+				tdCode.createEl('code', { text: fullCode, cls: 'ai-mcode', title: fullCode });
+				const tdAct = tr.createEl('td', { cls: 'ai-col-act' });
+				const editBtn = tdAct.createEl('button', { cls: 'ai-icn' });
+				setIcon(editBtn, 'pencil');
+				editBtn.setAttribute('aria-label', t('edit'));
+				editBtn.addEventListener('click', () => {
 					this.editing = m.i;
 					this.selected.clear();
 					this.renderTable();
 				});
-				tdA.createEl('button', { text: t('del'), cls: 'mod-warning' }).addEventListener('click', () =>
-					this.deleteOne(m.i)
-				);
+				const delBtn = tdAct.createEl('button', { cls: 'ai-icn ai-icn-del' });
+				setIcon(delBtn, 'trash');
+				delBtn.setAttribute('aria-label', t('del'));
+				delBtn.addEventListener('click', () => this.deleteOne(m.i));
 			}
 		}
 		this.renderPager(pages);
+	}
+
+	private pillClass(cat: { prefix?: string } | null | undefined): string {
+		if (!cat) return 'ai-pill-gray';
+		const prefix = (cat.prefix || '').toUpperCase();
+		if (prefix.includes('PLATFORM')) return 'ai-pill-blue';
+		if (prefix.includes('DEPT') || prefix.includes('LEVEL') || prefix.includes('DEPARTMENT')) return 'ai-pill-green';
+		if (prefix.includes('RESOURCE')) return 'ai-pill-purple';
+		return 'ai-pill-gray';
 	}
 
 	private sortIndicator(key: 'real' | 'code'): string {
@@ -2088,13 +2407,12 @@ class AIAliasSettingTab extends PluginSettingTab {
 		const t = (k: string): string => this.plugin.t(k);
 		const real = this.addRealEl.value.trim();
 		const catId = this.addCatEl.value;
-		const manual = this.addManualEl.checked;
 		const codeVal = this.addCodeEl.value.trim().toUpperCase();
 		if (!real) {
 			this.hint(t('errEmpty'));
 			return;
 		}
-		if (manual) {
+		if (codeVal) {
 			if (!isValidCode(codeVal)) {
 				this.hint(t('errChars'));
 				return;
@@ -2120,13 +2438,10 @@ class AIAliasSettingTab extends PluginSettingTab {
 	}
 
 	private afterAdd(code: string): void {
-		this.plugin.t('added');
 		new Notice(this.plugin.t('added') + this.plugin.wrap(code));
 		this.addRealEl.value = '';
 		this.addCodeEl.value = '';
-		this.addManualEl.checked = false;
-		this.addCodeEl.toggleClass('is-hidden', true);
-		this.addCatEl.value = '';
+		this.addCatEl.value = this.plugin.settings.categories[0]?.id ?? FILTER_UNCAT;
 		this.updateAutoPreview();
 		this.renderTable();
 		this.renderUncatNotice();
@@ -2313,6 +2628,7 @@ export default class AIAliasPlugin extends Plugin {
 		await this.loadSettings();
 		this.settingsTab = new AIAliasSettingTab(this.app, this);
 		this.addSettingTab(this.settingsTab);
+		this.addRibbonIcon('table', this.t('cmdOpenMappings'), () => new MappingTableModal(this.app, this).open());
 		this.registerCommands();
 
 		this.registerEvent(
@@ -2343,6 +2659,11 @@ export default class AIAliasPlugin extends Plugin {
 		} catch {
 			// multi-select entry unavailable on this Obsidian build — single file / folder still works
 		}
+
+		// ---- v1.8.0: paste auto-unmask ----
+		this.registerEvent(
+			this.app.workspace.on('editor-paste', (evt, editor) => this.onEditorPaste(evt, editor))
+		);
 	}
 
 	registerCommands(): void {
@@ -2369,6 +2690,11 @@ export default class AIAliasPlugin extends Plugin {
 					.then(() => new Notice(this.t('prefixCopied')))
 					.catch((e) => new Notice(this.t('copyFail') + (e instanceof Error ? e.message : String(e))));
 			}
+		});
+		this.addCommand({
+			id: 'open-mappings',
+			name: this.t('cmdOpenMappings'),
+			callback: () => new MappingTableModal(this.app, this).open()
 		});
 		this.addCommand({
 			id: 'undo-last-batch',
@@ -2417,7 +2743,7 @@ export default class AIAliasPlugin extends Plugin {
 	private addBatchMenu(menu: Menu, items: TAbstractFile[], multi: boolean): void {
 		const singleFile = !multi && items.length === 1 && items[0] instanceof TFile;
 		// a right-click on a single non-markdown file shows nothing at all
-		if (singleFile && !this.isBatchTarget(items[0])) return;
+		if (singleFile && items[0] instanceof TFile && !this.isBatchTarget(items[0])) return;
 		const targets = this.collectTargets(items);
 		const n = targets.length;
 		if (multi && n === 0) return;
@@ -2532,8 +2858,9 @@ export default class AIAliasPlugin extends Plugin {
 			scan.decrypted = this.decrypt(content);
 			scan.bareHits = this.toCodeHits(this.scanBareCodes(scan.decrypted));
 			scan.titleHits = this.toCodeHits(this.scanBareCodes(file.basename));
-			// bare codes are never restored automatically — user ticks them one by one
-			scan.bareChecks = scan.bareHits.map(() => false);
+			// bare codes: default unchecked ("confirm each") unless "restore all" is selected
+			const barePolicy = this.settings.batchBareCodePolicy;
+			scan.bareChecks = scan.bareHits.map(() => barePolicy === 'restoreAll');
 			scan.titleChecks = scan.titleHits.map(() => false);
 		}
 		return scan;
@@ -2759,6 +3086,22 @@ export default class AIAliasPlugin extends Plugin {
 		return this.settings.prefix + code + this.settings.suffix;
 	}
 
+	// v1.8.0: paste auto-unmask — restores real names in pasted text when the
+	// toggle is on. We take over the paste only when the clipboard actually
+	// contains wrapped aliases, so normal pastes are untouched.
+	private onEditorPaste(evt: ClipboardEvent, editor: Editor): void {
+		if (!this.settings.pasteUnmask) return;
+		if (evt.defaultPrevented) return;
+		if (this.settings.mappings.length === 0) return;
+		const data = evt.clipboardData ? evt.clipboardData.getData('text/plain') : '';
+		if (!data) return;
+		const out = this.decrypt(data);
+		if (out === data) return;
+		evt.preventDefault();
+		editor.replaceSelection(out);
+		new Notice(this.t('pasteUnmasked'));
+	}
+
 	runEncrypt(editor: Editor): void {
 		if (this.settings.mappings.length === 0) {
 			new Notice(this.t('emptyEncrypt'));
@@ -2866,7 +3209,10 @@ export default class AIAliasPlugin extends Plugin {
 		this.settings.batchSkipFrontmatter = this.settings.batchSkipFrontmatter !== false;
 		this.settings.batchBackupEnabled = this.settings.batchBackupEnabled !== false;
 		this.settings.batchRenameTitles = this.settings.batchRenameTitles === true;
-		if (this.settings.batchBareCodePolicy !== 'skip') this.settings.batchBareCodePolicy = 'confirmAll';
+		if (this.settings.batchBareCodePolicy !== 'skip' && this.settings.batchBareCodePolicy !== 'restoreAll') {
+			this.settings.batchBareCodePolicy = 'confirmAll';
+		}
+		this.settings.pasteUnmask = this.settings.pasteUnmask === true;
 		const keep = Number(this.settings.batchBackupKeep);
 		this.settings.batchBackupKeep = Number.isFinite(keep) ? Math.min(20, Math.max(1, Math.floor(keep))) : 5;
 

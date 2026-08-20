@@ -45,7 +45,8 @@ var DEFAULT_SETTINGS = {
   batchRenameTitles: false,
   batchSkipFrontmatter: true,
   batchBackupEnabled: true,
-  batchBackupKeep: 5
+  batchBackupKeep: 5,
+  pasteUnmask: false
 };
 var PRESET_DEFS = [
   { key: "platform", en: "Platform", zh: "\u5E73\u53F0", prefix: "PLATFORM" },
@@ -58,13 +59,26 @@ var PRESET_DEFS = [
 var PAGE = 10;
 var STR = {
   en: {
-    title: "AI Alias",
+    headerTitle: "AI Alias",
+    headerSub: "Local privacy gateway for AI",
+    navGeneral: "General",
+    navCatMap: "Categories & mappings",
+    navBatch: "Batch operations",
+    navData: "Data management",
+    closeAria: "Close settings",
+    secGeneral: "General",
+    secCategory: "Categories",
+    secMapping: "Mapping table",
+    secBatch: "Batch operations",
     language: "Language",
     languageDesc: "Interface language for this plugin.",
     prefix: "Alias wrap prefix",
     prefixDesc: "Left wrapper around the alias. Default [[ renders as an Obsidian link; change to \u3010 or \xAB to avoid that.",
     suffix: "Alias wrap suffix",
     suffixDesc: "Right wrapper around the alias.",
+    pasteUnmask: "Paste & auto-unmask",
+    pasteUnmaskDesc: "When you paste text that contains aliases (e.g. from an AI reply), automatically restore the real names in the pasted text. Only the pasted text is affected.",
+    pasteUnmasked: "Auto-restored aliases in pasted text",
     add: "Add",
     importExport: "Import / Export mappings",
     importExportDesc: "Export: copy JSON to clipboard (safe, not written to any note). Import: paste JSON from clipboard; choose Clear & insert or Insert.",
@@ -72,13 +86,16 @@ var STR = {
     importBtn: "Import from clipboard",
     // CRUD manager
     mappingTitle: "Mapping table",
+    openMappingDesc: "Open in a wider full-screen window (recommended to avoid the narrow right-side panel).",
+    mappingInlineDesc: "Search, add, edit and delete mappings here. Entries are shown 10 per page; use the category dropdown to filter.",
     searchPh: "Search real name, alias or category\u2026",
     batchAdd: "Batch add",
     delSel: "Delete selected",
     clearAll: "Clear all",
-    addSave: "Save",
+    addSave: "Add",
+    save: "Save",
     cancel: "Cancel",
-    thReal: "Real name",
+    thReal: "Original name",
     thCode: "Alias",
     thCat: "Category",
     actions: "Actions",
@@ -120,6 +137,7 @@ var STR = {
     cmdEncrypt: "AI Alias: Convert real names to aliases (\u771F\u5B9E\u540D\u8F6C\u4EE3\u53F7)",
     cmdDecrypt: "AI Alias: Convert aliases to real names (\u4EE3\u53F7\u8F6C\u771F\u5B9E\u540D)",
     cmdPrefix: "AI Alias: Copy AI prompt prefix (\u590D\u5236 AI \u63D0\u793A\u8BCD\u524D\u7F00)",
+    cmdOpenMappings: "AI Alias: Open mappings (\u6253\u5F00\u6620\u5C04\u8868\u7BA1\u7406)",
     menuEncrypt: "AI Alias: Real name \u2192 Alias",
     menuDecrypt: "AI Alias: Alias \u2192 Real name",
     emptyEncrypt: "Mapping table is empty; add entries in settings first",
@@ -146,6 +164,8 @@ var STR = {
     // category auto-alias (v1.6.0)
     catTitle: "Categories",
     catAdd: "Add category",
+    catAddTitle: "Add category",
+    catEditTitle: "Edit category",
     catNamePh: "Name",
     catPrefixPh: "Prefix",
     catPrefixDesc: "Letters/digits only; must be globally unique. Changing a prefix keeps existing aliases unchanged; only new aliases use the new prefix.",
@@ -171,6 +191,8 @@ var STR = {
     aliasName: "Alias",
     realPlaceholder: "Real name",
     codePlaceholder: "Alias (letters/digits/_)",
+    codeName: "Alias",
+    codePlaceholderAuto: "Leave empty to auto-generate",
     pagerPrev: "Prev",
     pagerNext: "Next",
     catNotFound: "Category not found",
@@ -181,9 +203,10 @@ var STR = {
     batchIncludeSub: "Include subfolders",
     batchIncludeSubDesc: "When running a batch action on a folder, also process notes inside its subfolders.",
     batchBarePolicy: "Bare alias codes on batch decrypt",
-    batchBarePolicyDesc: 'A bare code is an alias that appears without the wrapper (AI replies often drop it). "Confirm each" lists every bare code, unchecked by default. "Skip" restores only aliases that still have the wrapper.',
+    batchBarePolicyDesc: 'A bare code is an alias that appears without the wrapper (AI replies often drop it). "Confirm each" lists every bare code, unchecked by default. "Restore all" pre-checks them all. "Skip" restores only aliases that still have the wrapper.',
     batchBarePolicyConfirm: "Confirm each (recommended)",
     batchBarePolicySkip: "Skip bare codes",
+    batchBarePolicyRestore: "Restore all bare codes",
     batchRename: "Also restore note titles on batch decrypt",
     batchRenameDesc: "Renames the note files. This affects links from other notes and cannot be undone with Ctrl/Cmd+Z. Off by default.",
     batchSkipFm: "Skip YAML frontmatter when batch encrypting",
@@ -216,6 +239,7 @@ var STR = {
     bpSummary: "Scanned %s note(s) \u2192 will change %c \xB7 %n replacement(s)",
     bpBreakdown: "With alias %w \xB7 bare %b \xB7 titles %t",
     bpPolicyHint: "Bare codes are listed one by one for you to confirm; nothing is restored automatically.",
+    bpPolicyRestoreAll: "Bare codes are pre-selected below (restore all); uncheck any you want to keep as aliases.",
     bpSkipBare: "Skip bare codes (restore only aliases that have the wrapper)",
     bpRenameTitles: "Also restore note titles (renames the files)",
     bpRenameWarn: "Renaming affects links from other notes and cannot be undone with Ctrl/Cmd+Z.",
@@ -237,6 +261,30 @@ var STR = {
     bpRun: "Run (%d notes)",
     bpConfirmMany: "%d notes will be modified and written to disk. Continue?",
     bpEmpty: "No mapping hits found in the scanned notes.",
+    // ---- v1.8.0 batch preview & import modals (new i18n keys) ----
+    bpSubEnc: "Batch encrypt preview \xB7 a snapshot is auto-created for undo.",
+    bpSubDec: "Batch decrypt preview \xB7 a snapshot is auto-created for undo.",
+    bpStatFiles: "Files",
+    bpStatHits: "Hits",
+    bpStatBare: "Bare",
+    bpSkipFmLabel: "Skip frontmatter when encrypting",
+    bpBareLabel: "Bare codes (unwrapped) handling",
+    bpFileListTitle: "File list",
+    bpInfoBar: "Operation will modify files; a snapshot was auto-created and can be undone anytime.",
+    bpInfoBarFmt: "Operation will modify %d file(s); a snapshot was auto-created and can be undone anytime.",
+    bpSelected: "Selected %d / %d",
+    bpRunEnc: "Run encryption (%d notes)",
+    bpRunDec: "Run decryption (%d notes)",
+    importTitleV2: "Batch import mappings",
+    importSubV2: "One per line: real name = alias. Preview, then insert into the mapping table.",
+    importInputLabel: "Mapping content (each line: original = alias)",
+    importModeLabel: "Import mode",
+    importMergeV2: "Append insert",
+    importOverwriteV2: "Clear & insert",
+    importPreviewEmpty: "Preview: enter mappings to import",
+    importPreviewHead: "%v valid \xB7 %s duplicates skipped",
+    importWillInsert: "Will insert %d entries",
+    importDoBtn: "Import %d entries",
     // ---- v1.7.0 batch operations: undo ----
     cmdUndo: "AI Alias: Undo last batch operation (\u64A4\u9500\u4E0A\u6B21\u6279\u91CF\u64CD\u4F5C)",
     undoNone: "No batch snapshot found",
@@ -257,25 +305,41 @@ var STR = {
     cat_dept2: "Department L2"
   },
   zh: {
-    title: "AI Alias\uFF08\u4FDD\u5BC6\u4EE3\u53F7\uFF09",
+    headerTitle: "AI Alias \u8BBE\u7F6E",
+    headerSub: "\u9762\u5411 AI \u7684\u672C\u5730\u9690\u79C1\u8131\u654F\u4E2D\u95F4\u4EF6",
+    navGeneral: "\u901A\u7528",
+    navCatMap: "\u5206\u7C7B\u4E0E\u6620\u5C04",
+    navBatch: "\u6279\u91CF\u64CD\u4F5C",
+    navData: "\u6570\u636E\u7BA1\u7406",
+    closeAria: "\u5173\u95ED\u8BBE\u7F6E",
+    secGeneral: "\u901A\u7528",
+    secCategory: "\u5206\u7C7B\u7BA1\u7406",
+    secMapping: "\u6620\u5C04\u8868",
+    secBatch: "\u6279\u91CF\u64CD\u4F5C",
     language: "\u8BED\u8A00",
     languageDesc: "\u672C\u63D2\u4EF6\u7684\u754C\u9762\u8BED\u8A00\u3002",
     prefix: "\u4EE3\u53F7\u5305\u88F9\u524D\u7F00",
     prefixDesc: "\u5305\u88F9\u4EE3\u53F7\u7684\u5DE6\u7B26\u53F7\u3002\u9ED8\u8BA4 [[ \u4F1A\u88AB Obsidian \u6E32\u67D3\u6210\u94FE\u63A5\uFF0C\u53EF\u6539\u4E3A \u3010 \u6216 \xAB \u907F\u514D\u3002",
     suffix: "\u4EE3\u53F7\u5305\u88F9\u540E\u7F00",
     suffixDesc: "\u5305\u88F9\u4EE3\u53F7\u7684\u53F3\u7B26\u53F7\u3002",
-    add: "\u6DFB\u52A0",
+    pasteUnmask: "\u7C98\u8D34\u5373\u8FD8\u539F",
+    pasteUnmaskDesc: "\u7C98\u8D34\u5305\u542B\u4EE3\u53F7\u7684\u5185\u5BB9\uFF08\u5982 AI \u56DE\u590D\uFF09\u65F6\uFF0C\u81EA\u52A8\u628A\u4EE3\u53F7\u8FD8\u539F\u4E3A\u771F\u5B9E\u540D\u79F0\u3002\u4EC5\u5F71\u54CD\u7C98\u8D34\u8FDB\u6765\u7684\u6587\u672C\u3002",
+    pasteUnmasked: "\u5DF2\u81EA\u52A8\u8FD8\u539F\u7C98\u8D34\u6587\u672C\u4E2D\u7684\u4EE3\u53F7",
+    add: "\u65B0\u589E",
     importExport: "\u5BFC\u5165 / \u5BFC\u51FA\u6620\u5C04",
     importExportDesc: "\u5BFC\u51FA\uFF1A\u590D\u5236 JSON \u5230\u526A\u8D34\u677F\uFF08\u5B89\u5168\uFF0C\u4E0D\u5199\u5165\u4EFB\u4F55\u7B14\u8BB0\uFF09\u3002\u5BFC\u5165\uFF1A\u4ECE\u526A\u8D34\u677F\u7C98\u8D34 JSON\uFF0C\u53EF\u9009\u62E9\u6E05\u7A7A\u540E\u63D2\u5165\u6216\u63D2\u5165\u3002",
     exportBtn: "\u5BFC\u51FA\u5230\u526A\u8D34\u677F",
     importBtn: "\u4ECE\u526A\u8D34\u677F\u5BFC\u5165",
     // CRUD manager
     mappingTitle: "\u6620\u5C04\u8868",
+    openMappingDesc: "\u5728\u66F4\u5BBD\u7684\u5168\u5C4F\u7A97\u53E3\u4E2D\u7BA1\u7406\u6620\u5C04\u8868\uFF08\u63A8\u8350\uFF0C\u907F\u514D\u53F3\u4FA7\u8BBE\u7F6E\u9762\u677F\u8FC7\u7A84\uFF09\u3002",
+    mappingInlineDesc: "\u5728\u6B64\u641C\u7D22\u3001\u65B0\u589E\u3001\u7F16\u8F91\u3001\u5220\u9664\u6620\u5C04\u3002\u6BCF\u9875\u663E\u793A 10 \u6761\uFF0C\u53EF\u7528\u7C7B\u522B\u4E0B\u62C9\u7B5B\u9009\u3002",
     searchPh: "\u641C\u7D22\u539F\u6587 / \u4EE3\u53F7 / \u7C7B\u522B\u2026",
-    batchAdd: "\u6279\u91CF\u6DFB\u52A0",
+    batchAdd: "\u6279\u91CF\u65B0\u589E",
     delSel: "\u5220\u9664\u9009\u4E2D",
     clearAll: "\u6E05\u7A7A\u5168\u90E8",
-    addSave: "\u4FDD\u5B58",
+    addSave: "\u65B0\u589E",
+    save: "\u4FDD\u5B58",
     cancel: "\u53D6\u6D88",
     thReal: "\u539F\u6587",
     thCode: "\u4EE3\u53F7",
@@ -283,7 +347,7 @@ var STR = {
     actions: "\u64CD\u4F5C",
     edit: "\u7F16\u8F91",
     del: "\u5220\u9664",
-    empty: "\uFF08\u7A7A\uFF09\u8BF7\u5148\u6DFB\u52A0\u6761\u76EE\u3002",
+    empty: "\uFF08\u7A7A\uFF09\u8BF7\u5148\u65B0\u589E\u6761\u76EE\u3002",
     filteredEmpty: "\u65E0\u5339\u914D\u7ED3\u679C\u3002",
     errEmpty: "\u539F\u6587\u548C\u4EE3\u53F7\u90FD\u4E0D\u80FD\u4E3A\u7A7A",
     errChars: "\u4EE3\u53F7\u53EA\u80FD\u5305\u542B\u5B57\u6BCD\u3001\u6570\u5B57\u3001\u4E0B\u5212\u7EBF",
@@ -296,9 +360,9 @@ var STR = {
     confirmDelSel: "\u786E\u5B9A\u5220\u9664\u9009\u4E2D\u7684 %d \u6761\uFF1F",
     confirmClear: "\u786E\u5B9A\u6E05\u7A7A\u5168\u90E8 %d \u6761\u6620\u5C04\uFF1F\u6B64\u64CD\u4F5C\u4E0D\u53EF\u64A4\u9500\u3002",
     cancelClear: "\u5DF2\u53D6\u6D88",
-    batchTitle: "\u6279\u91CF\u6DFB\u52A0\u6620\u5C04",
+    batchTitle: "\u6279\u91CF\u65B0\u589E\u6620\u5C04",
     batchFmt: "\u6BCF\u884C\u4E00\u6761\u3002\u300C\u539F\u6587\u300D\u2192 \u7528\u9ED8\u8BA4\u7C7B\u522B\u81EA\u52A8\u51FA\u7801\uFF1B\u300C\u539F\u6587|\u7C7B\u522B\u300D\u2192 \u6307\u5B9A\u7C7B\u522B\u81EA\u52A8\u51FA\u7801\uFF1B\u300C\u539F\u6587=\u4EE3\u53F7\u300D\u2192 \u624B\u52A8\u4EE3\u53F7\uFF08\u672A\u5206\u7C7B\uFF09\u3002\u7A7A\u884C\u5FFD\u7565\u3002",
-    batchSave: "\u6DFB\u52A0",
+    batchSave: "\u65B0\u589E",
     previewWarn: "\u8DF3\u8FC7\uFF1A",
     dupInBatch: "\u6279\u91CF\u5185\u91CD\u590D",
     importMergeOk: "\u5DF2\u63D2\u5165 %d \u6761\u65B0\u6620\u5C04",
@@ -319,9 +383,10 @@ var STR = {
     cmdEncrypt: "AI Alias\uFF1A\u771F\u5B9E\u540D\u8F6C\u4EE3\u53F7\uFF08Convert real names to aliases\uFF09",
     cmdDecrypt: "AI Alias\uFF1A\u4EE3\u53F7\u8F6C\u771F\u5B9E\u540D\uFF08Convert aliases to real names\uFF09",
     cmdPrefix: "AI Alias\uFF1A\u590D\u5236 AI \u63D0\u793A\u8BCD\u524D\u7F00\uFF08Copy AI prompt prefix\uFF09",
+    cmdOpenMappings: "AI Alias\uFF1A\u6253\u5F00\u6620\u5C04\u8868\u7BA1\u7406\uFF08Open mappings\uFF09",
     menuEncrypt: "AI Alias\uFF1A\u771F\u5B9E\u540D \u2192 \u4EE3\u53F7",
     menuDecrypt: "AI Alias\uFF1A\u4EE3\u53F7 \u2192 \u771F\u5B9E\u540D",
-    emptyEncrypt: "\u6620\u5C04\u8868\u4E3A\u7A7A\uFF0C\u8BF7\u5148\u5728\u8BBE\u7F6E\u4E2D\u6DFB\u52A0\u6761\u76EE",
+    emptyEncrypt: "\u6620\u5C04\u8868\u4E3A\u7A7A\uFF0C\u8BF7\u5148\u5728\u8BBE\u7F6E\u4E2D\u65B0\u589E\u6761\u76EE",
     emptyDecrypt: "\u6620\u5C04\u8868\u4E3A\u7A7A",
     encrypted: "\u5DF2\u52A0\u5BC6\uFF08\u9009\u4E2D\u5185\u5BB9 / \u5168\u6587\uFF09",
     decrypted: "\u5DF2\u89E3\u5BC6\uFF08\u9009\u4E2D\u5185\u5BB9 / \u5168\u6587\uFF09",
@@ -345,6 +410,8 @@ var STR = {
     // 分类自动代号 (v1.6.0)
     catTitle: "\u7C7B\u522B",
     catAdd: "\u65B0\u589E\u7C7B\u522B",
+    catAddTitle: "\u65B0\u589E\u7C7B\u522B",
+    catEditTitle: "\u7F16\u8F91\u7C7B\u522B",
     catNamePh: "\u540D\u79F0",
     catPrefixPh: "\u524D\u7F00",
     catPrefixDesc: "\u4EC5\u5141\u8BB8\u5B57\u6BCD\u6570\u5B57\uFF0C\u5168\u5C40\u552F\u4E00\u3002\u4FEE\u6539\u524D\u7F00\u4E0D\u5F71\u54CD\u5DF2\u6709\u4EE3\u53F7\uFF0C\u4EC5\u65B0\u751F\u6210\u4EE3\u53F7\u4F7F\u7528\u65B0\u524D\u7F00\u3002",
@@ -370,6 +437,8 @@ var STR = {
     aliasName: "\u4EE3\u53F7",
     realPlaceholder: "\u539F\u6587",
     codePlaceholder: "\u4EE3\u53F7\uFF08\u5B57\u6BCD/\u6570\u5B57/\u4E0B\u5212\u7EBF\uFF09",
+    codeName: "\u4EE3\u53F7",
+    codePlaceholderAuto: "\u7559\u7A7A\u81EA\u52A8\u751F\u6210",
     pagerPrev: "\u4E0A\u4E00\u9875",
     pagerNext: "\u4E0B\u4E00\u9875",
     catNotFound: "\u672A\u627E\u5230\u8BE5\u7C7B\u522B",
@@ -380,9 +449,10 @@ var STR = {
     batchIncludeSub: "\u5305\u542B\u5B50\u6587\u4EF6\u5939",
     batchIncludeSubDesc: "\u5BF9\u6587\u4EF6\u5939\u6267\u884C\u6279\u91CF\u64CD\u4F5C\u65F6\uFF0C\u662F\u5426\u4E00\u5E76\u5904\u7406\u5176\u5B50\u6587\u4EF6\u5939\u5185\u7684\u7B14\u8BB0\u3002",
     batchBarePolicy: "\u6279\u91CF\u89E3\u5BC6\u65F6\u7684\u88F8\u4EE3\u53F7\u7B56\u7565",
-    batchBarePolicyDesc: "\u88F8\u4EE3\u53F7\u6307\u6CA1\u6709\u524D\u540E\u7F00\u5305\u88F9\u7684\u4EE3\u53F7\uFF08AI \u56DE\u590D\u7ECF\u5E38\u628A\u5305\u88F9\u5F04\u4E22\uFF09\u3002\u300C\u9010\u6761\u786E\u8BA4\u300D\u4F1A\u628A\u6240\u6709\u88F8\u4EE3\u53F7\u5217\u51FA\u3001\u9ED8\u8BA4\u4E0D\u52FE\u9009\uFF1B\u300C\u8DF3\u8FC7\u300D\u5219\u53EA\u8FD8\u539F\u4ECD\u5E26\u524D\u540E\u7F00\u7684\u4EE3\u53F7\u3002",
+    batchBarePolicyDesc: "\u88F8\u4EE3\u53F7\u6307\u6CA1\u6709\u524D\u540E\u7F00\u5305\u88F9\u7684\u4EE3\u53F7\uFF08AI \u56DE\u590D\u7ECF\u5E38\u628A\u5305\u88F9\u5F04\u4E22\uFF09\u3002\u300C\u9010\u6761\u786E\u8BA4\u300D\u4F1A\u628A\u6240\u6709\u88F8\u4EE3\u53F7\u5217\u51FA\u3001\u9ED8\u8BA4\u4E0D\u52FE\u9009\uFF1B\u300C\u5168\u90E8\u8FD8\u539F\u300D\u9ED8\u8BA4\u5168\u90E8\u52FE\u9009\uFF1B\u300C\u8DF3\u8FC7\u300D\u5219\u53EA\u8FD8\u539F\u4ECD\u5E26\u524D\u540E\u7F00\u7684\u4EE3\u53F7\u3002",
     batchBarePolicyConfirm: "\u9010\u6761\u786E\u8BA4\uFF08\u63A8\u8350\uFF09",
     batchBarePolicySkip: "\u8DF3\u8FC7\u88F8\u4EE3\u53F7",
+    batchBarePolicyRestore: "\u5168\u90E8\u8FD8\u539F\u88F8\u4EE3\u53F7",
     batchRename: "\u6279\u91CF\u89E3\u5BC6\u65F6\u4E00\u5E76\u8FD8\u539F\u7B14\u8BB0\u6807\u9898",
     batchRenameDesc: "\u4F1A\u91CD\u547D\u540D\u7B14\u8BB0\u6587\u4EF6\uFF0C\u5F71\u54CD\u5176\u5B83\u7B14\u8BB0\u6307\u5411\u5B83\u7684\u94FE\u63A5\uFF0C\u4E14\u65E0\u6CD5\u7528 Ctrl/Cmd+Z \u64A4\u9500\u3002\u9ED8\u8BA4\u5173\u95ED\u3002",
     batchSkipFm: "\u6279\u91CF\u52A0\u5BC6\u65F6\u8DF3\u8FC7 YAML frontmatter",
@@ -415,6 +485,7 @@ var STR = {
     bpSummary: "\u626B\u63CF %s \u7BC7 \u2192 \u5C06\u4FEE\u6539 %c \u7BC7 \xB7 \u5171 %n \u5904",
     bpBreakdown: "\u542B\u4EE3\u53F7 %w \xB7 \u88F8\u4EE3\u53F7 %b \xB7 \u6807\u9898 %t",
     bpPolicyHint: "\u88F8\u4EE3\u53F7\u9ED8\u8BA4\u5168\u90E8\u5217\u51FA\u3001\u9010\u6761\u52FE\u9009\u786E\u8BA4\uFF0C\u4E0D\u4F1A\u81EA\u52A8\u8FD8\u539F\u3002",
+    bpPolicyRestoreAll: "\u88F8\u4EE3\u53F7\u5DF2\u9ED8\u8BA4\u5168\u90E8\u52FE\u9009\uFF08\u5168\u90E8\u8FD8\u539F\uFF09\uFF0C\u5982\u9700\u4FDD\u7559\u4E3A\u4EE3\u53F7\u53EF\u53D6\u6D88\u52FE\u9009\u3002",
     bpSkipBare: "\u8DF3\u8FC7\u88F8\u4EE3\u53F7\uFF08\u4EC5\u8FD8\u539F\u5E26\u524D\u540E\u7F00\u7684\u4EE3\u53F7\uFF09",
     bpRenameTitles: "\u540C\u65F6\u8FD8\u539F\u7B14\u8BB0\u6807\u9898\uFF08\u4F1A\u91CD\u547D\u540D\u6587\u4EF6\uFF09",
     bpRenameWarn: "\u91CD\u547D\u540D\u4F1A\u5F71\u54CD\u5176\u5B83\u7B14\u8BB0\u6307\u5411\u5B83\u7684\u94FE\u63A5\uFF0C\u4E14\u65E0\u6CD5\u7528 Ctrl/Cmd+Z \u64A4\u9500\u3002",
@@ -436,6 +507,30 @@ var STR = {
     bpRun: "\u6267\u884C\uFF08%d \u7BC7\uFF09",
     bpConfirmMany: "\u5C06\u4FEE\u6539\u5E76\u5199\u5165 %d \u7BC7\u7B14\u8BB0\uFF0C\u786E\u5B9A\u7EE7\u7EED\uFF1F",
     bpEmpty: "\u626B\u63CF\u8303\u56F4\u5185\u6CA1\u6709\u4EFB\u4F55\u6620\u5C04\u547D\u4E2D\u3002",
+    // ---- v1.8.0 批量预览与导入弹窗（新增 i18n 键） ----
+    bpSubEnc: "\u5C06\u81EA\u52A8\u521B\u5EFA\u5FEB\u7167\uFF0C\u53EF\u968F\u65F6\u64A4\u9500\u3002",
+    bpSubDec: "\u5C06\u81EA\u52A8\u521B\u5EFA\u5FEB\u7167\uFF0C\u53EF\u968F\u65F6\u64A4\u9500\u3002",
+    bpStatFiles: "\u6587\u4EF6",
+    bpStatHits: "\u547D\u4E2D",
+    bpStatBare: "\u88F8\u4EE3\u53F7",
+    bpSkipFmLabel: "\u52A0\u5BC6\u65F6\u8DF3\u8FC7 frontmatter",
+    bpBareLabel: "\u88F8\u4EE3\u53F7\uFF08\u672A\u5305\u88F9\uFF09\u5904\u7406",
+    bpFileListTitle: "\u6587\u4EF6\u6E05\u5355",
+    bpInfoBar: "\u64CD\u4F5C\u5C06\u4FEE\u6539\u6587\u4EF6\uFF0C\u5DF2\u81EA\u52A8\u521B\u5EFA\u5FEB\u7167\uFF0C\u53EF\u968F\u65F6\u64A4\u9500\u3002",
+    bpInfoBarFmt: "\u64CD\u4F5C\u5C06\u4FEE\u6539 %d \u4E2A\u6587\u4EF6\uFF0C\u5DF2\u81EA\u52A8\u521B\u5EFA\u5FEB\u7167\uFF0C\u53EF\u968F\u65F6\u64A4\u9500\u3002",
+    bpSelected: "\u5DF2\u9009 %d / %d \u4E2A\u6587\u4EF6",
+    bpRunEnc: "\u6267\u884C\u52A0\u5BC6\uFF08%d \u7BC7\uFF09",
+    bpRunDec: "\u6267\u884C\u89E3\u5BC6\uFF08%d \u7BC7\uFF09",
+    importTitleV2: "\u6279\u91CF\u5BFC\u5165\u6620\u5C04",
+    importSubV2: "\u6BCF\u884C\u4E00\u6761\uFF1A\u771F\u5B9E\u540D=\u4EE3\u53F7\uFF0C\u9884\u89C8\u540E\u63D2\u5165\u6620\u5C04\u8868",
+    importInputLabel: "\u6620\u5C04\u5185\u5BB9\uFF08\u6BCF\u884C \u539F\u6587=\u4EE3\u53F7\uFF09",
+    importModeLabel: "\u5BFC\u5165\u65B9\u5F0F",
+    importMergeV2: "\u8FFD\u52A0\u63D2\u5165",
+    importOverwriteV2: "\u6E05\u7A7A\u540E\u63D2\u5165",
+    importPreviewEmpty: "\u9884\u89C8\uFF1A\u8BF7\u8F93\u5165\u8981\u5BFC\u5165\u7684\u6620\u5C04",
+    importPreviewHead: "%v \u6761\u6709\u6548 \xB7 %s \u6761\u91CD\u590D\u5DF2\u8DF3\u8FC7",
+    importWillInsert: "\u5C06\u63D2\u5165 %d \u6761",
+    importDoBtn: "\u5BFC\u5165 %d \u6761",
     // ---- v1.7.0 批量操作：撤销 ----
     cmdUndo: "AI Alias\uFF1A\u64A4\u9500\u4E0A\u6B21\u6279\u91CF\u64CD\u4F5C\uFF08Undo last batch operation\uFF09",
     undoNone: "\u6CA1\u6709\u627E\u5230\u6279\u91CF\u64CD\u4F5C\u5FEB\u7167",
@@ -575,7 +670,8 @@ var BatchAddModal = class extends import_obsidian.Modal {
     const raw = this.taEl.value.split(/\r?\n/);
     const valid = [];
     const skipped = [];
-    const seen = /* @__PURE__ */ new Set();
+    const used = new Set(this.plugin.settings.mappings.map((mm) => mm.code));
+    const localSeq = /* @__PURE__ */ new Map();
     const perLine = this.perLineEl.checked;
     const defCat = this.catSel.value;
     for (const line of raw) {
@@ -593,11 +689,11 @@ var BatchAddModal = class extends import_obsidian.Modal {
           skipped.push({ line: s, reason: t("errChars") });
           continue;
         }
-        if (seen.has(code2) || this.plugin.settings.mappings.some((mm) => mm.code === code2)) {
+        if (used.has(code2)) {
           skipped.push({ line: s, reason: t("dupInBatch") });
           continue;
         }
-        seen.add(code2);
+        used.add(code2);
         valid.push({ real: real2, code: code2, manual: true, category: null });
         continue;
       }
@@ -623,7 +719,14 @@ var BatchAddModal = class extends import_obsidian.Modal {
         skipped.push({ line: s, reason: t("needCat") });
         continue;
       }
-      const code = this.plugin.generateCode(cat);
+      let seq = localSeq.get(cat.id) ?? cat.seq;
+      let code;
+      do {
+        seq += 1;
+        code = cat.prefix + String(seq).padStart(3, "0");
+      } while (used.has(code));
+      localSeq.set(cat.id, seq);
+      used.add(code);
       valid.push({ real, code, manual: false, category: cat.id });
     }
     this.preview = { valid, skipped };
@@ -650,7 +753,12 @@ var BatchAddModal = class extends import_obsidian.Modal {
       return;
     }
     for (const v of this.preview.valid) {
-      this.plugin.settings.mappings.push({ real: v.real, code: v.code, category: v.category, manual: v.manual });
+      let code = v.code;
+      if (!v.manual) {
+        const cat = this.plugin.categoryById(v.category);
+        if (cat) code = this.plugin.generateCode(cat);
+      }
+      this.plugin.settings.mappings.push({ real: v.real, code, category: v.category, manual: v.manual });
     }
     void this.plugin.save();
     new import_obsidian.Notice(this.plugin.t("addedN").replace("%d", String(this.preview.valid.length)));
@@ -665,77 +773,152 @@ var BatchAddModal = class extends import_obsidian.Modal {
 var ImportModal = class extends import_obsidian.Modal {
   constructor(app, plugin, tab) {
     super(app);
+    this.mode = "merge";
+    this.preview = null;
     this.plugin = plugin;
     this.tab = tab;
   }
   onOpen() {
     const { contentEl } = this;
     const t = (k) => this.plugin.t(k);
-    this.titleEl.setText(t("importTitle"));
-    contentEl.createEl("p", { cls: "ai-sub", text: t("importFormat") });
-    contentEl.createEl("p", { cls: "ai-help", text: t("importHelp") });
-    this.taEl = contentEl.createEl("textarea", { cls: "ai-ta" });
-    void navigator.clipboard.readText().then((txt) => this.taEl.value = txt).catch(() => void 0);
+    this.modalEl.addClass("ai-importmodal");
+    this.titleEl.setText(t("importTitleV2") || "\u6279\u91CF\u5BFC\u5165\u6620\u5C04");
+    contentEl.createEl("p", { cls: "ai-sub", text: t("importSubV2") || "\u6BCF\u884C\u4E00\u6761\uFF1A\u771F\u5B9E\u540D=\u4EE3\u53F7\uFF0C\u9884\u89C8\u540E\u63D2\u5165\u6620\u5C04\u8868" });
+    const inputWrap = contentEl.createDiv("ai-import-input");
+    inputWrap.createDiv("ai-import-label").setText(t("importInputLabel") || "\u6620\u5C04\u5185\u5BB9\uFF08\u6BCF\u884C \u539F\u6587=\u4EE3\u53F7\uFF09");
+    this.taEl = inputWrap.createEl("textarea", { cls: "ai-ta ai-import-ta" });
+    this.taEl.rows = 5;
+    this.taEl.addEventListener("input", () => this.parse());
+    const modeWrap = contentEl.createDiv("ai-import-mode");
+    modeWrap.createDiv("ai-import-label").setText(t("importModeLabel") || "\u5BFC\u5165\u65B9\u5F0F");
+    const modeBtns = modeWrap.createDiv("ai-import-modebtns");
+    const mergeBtn = modeBtns.createEl("button", { text: t("importMergeV2") || "\u9012\u52A0\u63D2\u5165", type: "button", cls: "ai-import-modebtn is-active" });
+    const overBtn = modeBtns.createEl("button", { text: t("importOverwriteV2") || "\u6E05\u7A7A\u540E\u63D2\u5165", type: "button", cls: "ai-import-modebtn" });
+    mergeBtn.addEventListener("click", () => {
+      this.mode = "merge";
+      mergeBtn.addClass("is-active");
+      overBtn.removeClass("is-active");
+    });
+    overBtn.addEventListener("click", () => {
+      this.mode = "overwrite";
+      overBtn.addClass("is-active");
+      mergeBtn.removeClass("is-active");
+    });
+    this.previewEl = contentEl.createDiv("ai-import-preview");
+    this.previewHeader = this.previewEl.createDiv("ai-import-previewhead");
+    const previewBody = this.previewEl.createDiv("ai-import-previewbody");
     const foot = contentEl.createEl("div", { cls: "ai-foot" });
-    foot.createEl("button", { text: t("cancel") }).addEventListener("click", () => this.close());
-    foot.createEl("button", { text: t("mergeBtn") }).addEventListener("click", () => this.doImport(true));
-    foot.createEl("button", { text: t("overwriteBtn"), cls: "mod-warning" }).addEventListener("click", () => this.doImport(false));
+    this.importLabel = foot.createSpan({ text: "", cls: "ai-import-footlabel" });
+    const cancelBtn = foot.createEl("button", { text: t("cancel") });
+    cancelBtn.addEventListener("click", () => this.close());
+    this.importBtn = foot.createEl("button", { text: "", cls: "mod-cta" });
+    this.importBtn.addEventListener("click", () => this.doImport());
+    this.parse();
   }
-  parseObj() {
+  parse() {
     const t = (k) => this.plugin.t(k);
-    const obj = JSON.parse(this.taEl.value);
-    const raw = Array.isArray(obj.mappings) ? obj.mappings : [];
-    const mappings = [];
-    const seen = /* @__PURE__ */ new Set();
-    for (const m of raw) {
-      const real = typeof m.real === "string" ? m.real.trim() : "";
-      const code = typeof m.code === "string" ? m.code.trim() : "";
-      const catRaw = typeof m.category === "string" ? m.category : null;
-      const cat = catRaw && this.plugin.settings.categories.some((c) => c.id === catRaw) ? catRaw : null;
-      if (!real || !code) throw new Error(t("errEmptyField"));
-      if (!isValidCode(code)) throw new Error(t("errInvalid") + code);
-      if (seen.has(code)) throw new Error(t("errDuplicate") + code);
-      seen.add(code);
-      mappings.push({ real, code, category: cat, manual: false });
-    }
-    return {
-      prefix: typeof obj.prefix === "string" ? obj.prefix : "",
-      suffix: typeof obj.suffix === "string" ? obj.suffix : "",
-      mappings
-    };
-  }
-  applyPrefixSuffix(prefix, suffix) {
-    if (prefix !== "") this.plugin.settings.prefix = prefix;
-    if (suffix !== "") this.plugin.settings.suffix = suffix;
-  }
-  doImport(merge) {
-    const t = (k) => this.plugin.t(k);
-    try {
-      const { prefix, suffix, mappings } = this.parseObj();
-      this.applyPrefixSuffix(prefix, suffix);
-      if (merge) {
-        const existing = new Set(this.plugin.settings.mappings.map((m) => m.code));
-        let added = 0;
-        for (const m of mappings) {
-          if (!existing.has(m.code)) {
-            this.plugin.settings.mappings.push(m);
-            existing.add(m.code);
-            added++;
-          }
-        }
-        void this.plugin.save();
-        new import_obsidian.Notice(t("importMergeOk").replace("%d", String(added)));
-      } else {
-        this.plugin.settings.mappings = mappings;
-        void this.plugin.save();
-        new import_obsidian.Notice(t("imported").replace("%d", String(mappings.length)));
+    const raw = this.taEl.value.split(/\r?\n/);
+    const valid = [];
+    const skipped = [];
+    const used = new Set(this.plugin.settings.mappings.map((mm) => mm.code));
+    for (const line of raw) {
+      const s = line.trim();
+      if (!s) continue;
+      const mEq = s.match(/^(.*?)\s*(?:=|→)\s*(.+)$/);
+      if (!mEq) {
+        skipped.push({ line: s, reason: t("errEmpty") });
+        continue;
       }
-      this.tab.renderTable();
-      this.tab.renderUncatNotice();
-      this.close();
-    } catch (e) {
-      new import_obsidian.Notice(t("importFail") + (e instanceof Error ? e.message : String(e)));
+      const real = mEq[1].trim();
+      const code = mEq[2].trim().toUpperCase();
+      if (!real || !code) {
+        skipped.push({ line: s, reason: t("errEmptyField") });
+        continue;
+      }
+      if (!isValidCode(code)) {
+        skipped.push({ line: s, reason: t("errInvalid") + code });
+        continue;
+      }
+      if (used.has(code)) {
+        skipped.push({ line: s, reason: t("errDuplicate") + code });
+        continue;
+      }
+      used.add(code);
+      valid.push({ real, code, category: null, manual: true });
     }
+    this.preview = { valid, skipped };
+    this.renderPreview();
+  }
+  renderPreview() {
+    const t = (k) => this.plugin.t(k);
+    if (!this.preview) return;
+    const { valid, skipped } = this.preview;
+    const total = valid.length + skipped.length;
+    this.previewHeader.empty();
+    if (total === 0) {
+      this.previewHeader.setText(t("importPreviewEmpty") || "\u9884\u89C8\uFF1A\u8BF7\u8F93\u5165\u8981\u5BFC\u5165\u7684\u6620\u5C04");
+      this.previewEl.createDiv("ai-import-previewempty").setText("");
+    } else {
+      const headText = t("importPreviewHead") || "%v \u6761\u6709\u6548 \xB7 %s \u6761\u91CD\u590D\u5DF2\u8DF3\u8FC7";
+      this.previewHeader.setText(headText.replace("%v", String(valid.length)).replace("%s", String(skipped.length)));
+    }
+    const body = this.previewEl.querySelector(".ai-import-previewbody");
+    if (body) {
+      body.empty();
+      for (const v of valid) {
+        const row = body.createDiv("ai-import-previewrow");
+        row.createSpan({ text: v.real, cls: "ai-import-prevreal" });
+        row.createSpan({ text: " \u2192 ", cls: "ai-import-prevarrow" });
+        row.createSpan({ text: "[[" + v.code + "]]", cls: "ai-import-prevcode" });
+      }
+      for (const sk of skipped) {
+        const row = body.createDiv("ai-import-previewrow is-skip");
+        row.createSpan({ text: sk.line, cls: "ai-import-prevreal" });
+        row.createSpan({ text: " " + sk.reason, cls: "ai-import-prevreason" });
+      }
+    }
+    const willInsert = valid.length;
+    const footText = t("importWillInsert") || "\u5C06\u63D2\u5165 %d \u6761";
+    this.importLabel.setText(footText.replace("%d", String(willInsert)));
+    this.importBtn.setText((t("importDoBtn") || "\u5BFC\u5165 %d \u6761").replace("%d", String(willInsert)));
+    this.importBtn.disabled = willInsert === 0;
+  }
+  doImport() {
+    const t = (k) => this.plugin.t(k);
+    if (!this.preview || this.preview.valid.length === 0) return;
+    const { valid } = this.preview;
+    if (this.mode === "overwrite") {
+      this.plugin.settings.mappings = [];
+    }
+    for (const v of valid) {
+      this.plugin.settings.mappings.push(v);
+    }
+    void this.plugin.save();
+    const n = valid.length;
+    const msg = this.mode === "overwrite" ? t("imported").replace("%d", String(n)) : t("importMergeOk").replace("%d", String(n));
+    new import_obsidian.Notice(msg);
+    this.tab.renderTable();
+    this.tab.renderUncatNotice();
+    this.close();
+  }
+  onClose() {
+    this.contentEl.empty();
+  }
+};
+var MappingTableModal = class extends import_obsidian.Modal {
+  constructor(app, plugin) {
+    super(app);
+    this.plugin = plugin;
+    this.tab = new AIAliasSettingTab(app, plugin);
+  }
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.empty();
+    const modalRoot = contentEl.closest(".modal");
+    if (modalRoot) modalRoot.addClass("ai-mapping-modal");
+    const t = (k) => this.plugin.t(k);
+    this.titleEl.setText(t("mappingTitle"));
+    this.tab.buildMappingUI(contentEl);
   }
   onClose() {
     this.contentEl.empty();
@@ -922,23 +1105,54 @@ var BatchPreviewModal = class extends import_obsidian.Modal {
     const t = (k) => this.plugin.t(k);
     this.modalEl.addClass("ai-bpmodal");
     this.titleEl.setText(this.direction === "encrypt" ? t("bpEncTitle") : t("bpDecTitle"));
-    contentEl.createEl("p", { cls: "ai-sub", text: t("bpTarget").replace("%s", this.label) });
-    const sum = contentEl.createEl("div", { cls: "ai-bpsum" });
-    this.summaryEl = sum.createEl("div", { cls: "ai-bpsum-main" });
-    this.breakdownEl = sum.createEl("div", { cls: "ai-bpsum-sub" });
-    if (this.direction === "decrypt") {
-      const pol = contentEl.createEl("div", { cls: "ai-bppolicy" });
-      pol.createEl("div", { cls: "ai-bppolicy-hint", text: t("bpPolicyHint") });
-      const l1 = pol.createEl("label", { cls: "ai-bpcheck" });
+    const subText = this.direction === "encrypt" ? t("bpSubEnc") || "3 \u4E2A\u6587\u4EF6 \xB7 \u547D\u4E2D 14 \u5904 \xB7 \u5C06\u81EA\u52A8\u521B\u5EFA\u5FEB\u7167" : t("bpSubDec") || "3 \u4E2A\u6587\u4EF6 \xB7 \u547D\u4E2D 14 \u5904 \xB7 \u5C06\u81EA\u52A8\u521B\u5EFA\u5FEB\u7167";
+    contentEl.createEl("p", { cls: "ai-sub", text: subText });
+    const stats = contentEl.createDiv("ai-bpstats");
+    const statFiles = stats.createDiv("ai-bpstat");
+    statFiles.createDiv("ai-bpstat-num").setText(String(this.scans.length));
+    statFiles.createDiv("ai-bpstat-lbl").setText(t("bpStatFiles") || "\u6587\u4EF6");
+    const statHits = stats.createDiv("ai-bpstat");
+    let totalHits = 0;
+    for (const s of this.scans) {
+      if (this.direction === "encrypt") totalHits += s.realHits.length;
+      else totalHits += s.wrappedHits.length + s.bareHits.length + s.titleHits.length;
+    }
+    statHits.createDiv("ai-bpstat-num").setText(String(totalHits));
+    statHits.createDiv("ai-bpstat-lbl").setText(t("bpStatHits") || "\u547D\u4E2D");
+    const statBare = stats.createDiv("ai-bpstat");
+    let totalBare = 0;
+    for (const s of this.scans) totalBare += s.bareHits.length;
+    statBare.createDiv("ai-bpstat-num is-bare").setText(String(totalBare));
+    statBare.createDiv("ai-bpstat-lbl").setText(t("bpStatBare") || "\u88F8\u4EE3\u53F7");
+    const settingsBox = contentEl.createDiv("ai-bpsettings");
+    if (this.direction === "encrypt") {
+      const l1 = settingsBox.createEl("label", { cls: "ai-bpcheckrow" });
       const c1 = l1.createEl("input", { type: "checkbox" });
-      c1.checked = this.skipBare;
-      l1.createSpan({ text: t("bpSkipBare") });
+      c1.checked = this.plugin.settings.batchSkipFrontmatter;
+      l1.createSpan({ text: t("bpSkipFmLabel") || "\u52A0\u5BC6\u65F6\u8DF3\u8FC7 frontmatter" });
       c1.addEventListener("change", () => {
-        this.skipBare = c1.checked;
+        this.plugin.settings.batchSkipFrontmatter = c1.checked;
+        void this.plugin.save();
+      });
+    } else {
+      const pol = settingsBox.createDiv("ai-bppolicy");
+      const policy = this.plugin.settings.batchBareCodePolicy;
+      pol.createDiv("ai-bppolicy-hint").setText(policy === "restoreAll" ? t("bpPolicyRestoreAll") : t("bpPolicyHint"));
+      const bareRow = pol.createDiv("ai-bpcheckrow");
+      bareRow.createSpan({ text: t("bpBareLabel") || "\u88F8\u4EE3\u53F7\uFF08\u672A\u5305\u88F9\uFF09\u5904\u7406" });
+      const sel = bareRow.createEl("select", { cls: "ai-bpsel" });
+      sel.createEl("option", { text: t("batchBarePolicyConfirm"), value: "confirmAll" });
+      sel.createEl("option", { text: t("batchBarePolicySkip"), value: "skip" });
+      sel.createEl("option", { text: t("batchBarePolicyRestore"), value: "restoreAll" });
+      sel.value = this.plugin.settings.batchBareCodePolicy;
+      sel.addEventListener("change", () => {
+        this.plugin.settings.batchBareCodePolicy = sel.value;
+        void this.plugin.save();
+        this.skipBare = this.plugin.settings.batchBareCodePolicy === "skip";
         this.renderList();
         this.refresh();
       });
-      const l2 = pol.createEl("label", { cls: "ai-bpcheck" });
+      const l2 = pol.createEl("label", { cls: "ai-bpcheckrow" });
       const c2 = l2.createEl("input", { type: "checkbox" });
       c2.checked = this.renameTitles;
       l2.createSpan({ text: t("bpRenameTitles") });
@@ -947,14 +1161,18 @@ var BatchPreviewModal = class extends import_obsidian.Modal {
         this.renderList();
         this.refresh();
       });
-      pol.createEl("div", { cls: "ai-bppolicy-warn", text: t("bpRenameWarn") });
+      pol.createDiv("ai-bppolicy-warn").setText(t("bpRenameWarn"));
     }
-    this.listEl = contentEl.createEl("div", { cls: "ai-bplist" });
-    this.warnEl = contentEl.createEl("p", { cls: "ai-help ai-help-warn" });
+    const listWrap = contentEl.createDiv("ai-bplistwrap");
+    listWrap.createDiv("ai-bpsectitle").setText(t("bpFileListTitle") || "\u6587\u4EF6\u6E05\u5355");
+    this.listEl = listWrap.createDiv("ai-bplist");
+    this.infoEl = contentEl.createDiv("ai-bpinfo");
+    this.infoEl.setText(t("bpInfoBar") || "\u64CD\u4F5C\u5C06\u4FEE\u6539 N \u4E2A\u6587\u4EF6\uFF0C\u5DF2\u81EA\u52A8\u521B\u5EFA\u5FEB\u7167\uFF0C\u53EF\u968F\u65F6\u64A4\u9500\u3002");
     const foot = contentEl.createEl("div", { cls: "ai-foot" });
+    foot.createSpan({ text: "", cls: "ai-bpfoodsel" });
+    foot.createEl("button", { text: t("cancel") }).addEventListener("click", () => this.close());
     foot.createEl("button", { text: t("bpSelAll") }).addEventListener("click", () => this.setAll(true));
     foot.createEl("button", { text: t("bpSelNone") }).addEventListener("click", () => this.setAll(false));
-    foot.createEl("button", { text: t("cancel") }).addEventListener("click", () => this.close());
     this.runBtn = foot.createEl("button", { text: "", cls: "mod-cta" });
     this.runBtn.addEventListener("click", () => this.confirmRun());
     this.renderList();
@@ -1107,43 +1325,21 @@ var BatchPreviewModal = class extends import_obsidian.Modal {
     const t = (k) => this.plugin.t(k);
     let files = 0;
     let n = 0;
-    let w = 0;
-    let b = 0;
-    let ti = 0;
     for (const s of this.scans) {
       if (!s.selected || !this.hasPotential(s)) continue;
       const c = this.counts(s);
       if (c.n === 0) continue;
       files++;
       n += c.n;
-      w += c.w;
-      b += c.b;
-      ti += c.ti;
     }
-    this.summaryEl.setText(
-      t("bpSummary").replace("%s", String(this.scans.length)).replace("%c", String(files)).replace("%n", String(n))
-    );
-    if (this.direction === "decrypt") {
-      this.breakdownEl.setText(
-        t("bpBreakdown").replace("%w", String(w)).replace("%b", String(b)).replace("%t", String(ti))
-      );
-      this.breakdownEl.toggleClass("is-hidden", false);
-    } else {
-      this.breakdownEl.toggleClass("is-hidden", true);
-    }
-    this.warnEl.empty();
-    this.warnEl.createSpan({ text: t("bpWarn") });
-    this.warnEl.createEl("br");
-    this.warnEl.createSpan({
-      text: this.plugin.settings.batchBackupEnabled ? t("bpWarnBackup") : t("bpWarnNoBackup")
-    });
-    const many = files > BATCH_MANY;
-    if (many) {
-      this.warnEl.createEl("br");
-      this.warnEl.createSpan({ text: t("bpWarnMany").replace("%d", String(BATCH_MANY)), cls: "ai-bpdanger" });
-    }
-    this.warnEl.toggleClass("ai-help-danger", many);
-    this.runBtn.setText(t("bpRun").replace("%d", String(files)));
+    const selTotal = this.scans.filter((s) => s.selected).length;
+    const totalScans = this.scans.length;
+    const infoText = (t("bpInfoBarFmt") || "\u64CD\u4F5C\u5C06\u4FEE\u6539 %d \u4E2A\u6587\u4EF6\uFF0C\u5DF2\u81EA\u52A8\u521B\u5EFA\u5FEB\u7167\uFF0C\u53EF\u968F\u65F6\u64A4\u9500\u3002").replace("%d", String(files));
+    if (this.infoEl) this.infoEl.setText(infoText);
+    const selLabel = this.modalEl.querySelector(".ai-bpfoodsel");
+    if (selLabel) selLabel.setText((t("bpSelected") || "\u5DF2\u9009 %d / %d \u4E2A\u6587\u4EF6").replace("%d", String(selTotal)).replace("%d", String(totalScans)));
+    const runLabel = this.direction === "encrypt" ? t("bpRunEnc") || "\u6267\u884C\u52A0\u5BC6\uFF08%d \u7BC7\uFF09" : t("bpRunDec") || "\u6267\u884C\u89E3\u5BC6\uFF08%d \u7BC7\uFF09";
+    this.runBtn.setText(runLabel.replace("%d", String(files)));
     this.runBtn.disabled = files === 0;
   }
   setAll(v) {
@@ -1206,6 +1402,103 @@ var BatchPreviewModal = class extends import_obsidian.Modal {
     go();
   }
 };
+var CategoryModal = class extends import_obsidian.Modal {
+  constructor(app, plugin, tab, mode, cat) {
+    super(app);
+    this.plugin = plugin;
+    this.tab = tab;
+    this.mode = mode;
+    this.cat = cat;
+  }
+  onOpen() {
+    const { contentEl } = this;
+    const t = (k) => this.plugin.t(k);
+    this.titleEl.setText(this.mode === "add" ? t("catAddTitle") : t("catEditTitle"));
+    const box = contentEl.createEl("div", { cls: "ai-cat-form" });
+    const nf = box.createEl("div", { cls: "ai-fld" });
+    nf.createEl("label", { text: t("catNamePh") });
+    this.nameEl = nf.createEl("input", { type: "text", placeholder: t("catNamePh") });
+    const pf = box.createEl("div", { cls: "ai-fld" });
+    pf.createEl("label", { text: t("catPrefixPh") });
+    this.prefixEl = pf.createEl("input", { type: "text", placeholder: t("catPrefixPh") });
+    this.errEl = box.createEl("div", { cls: "ai-hint" });
+    if (this.mode === "edit" && this.cat) {
+      this.nameEl.value = this.cat.name;
+      this.prefixEl.value = this.cat.prefix;
+    }
+    this.prefixEl.addEventListener("input", () => {
+      this.prefixEl.value = this.prefixEl.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    });
+    this.nameEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        this.doSave();
+      }
+    });
+    this.prefixEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        this.doSave();
+      }
+    });
+    const foot = contentEl.createEl("div", { cls: "ai-foot" });
+    if (this.mode === "edit" && this.cat) {
+      const delBtn = foot.createEl("button", { text: t("catDel"), cls: "mod-warning" });
+      delBtn.addEventListener("click", () => {
+        const c = this.cat;
+        if (c) {
+          this.tab.deleteCategory(c);
+          this.close();
+        }
+      });
+    }
+    foot.createEl("button", { text: t("cancel") }).addEventListener("click", () => this.close());
+    const saveBtn = foot.createEl("button", { text: t("save"), cls: "mod-cta" });
+    saveBtn.addEventListener("click", () => this.doSave());
+  }
+  setErr(msg) {
+    this.errEl.setText(msg);
+    this.errEl.className = "ai-hint ai-err";
+  }
+  doSave() {
+    const t = (k) => this.plugin.t(k);
+    const name = this.nameEl.value.trim();
+    let prefix = this.prefixEl.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const cats = this.plugin.settings.categories;
+    if (!name) {
+      this.setErr(t("catNameErr"));
+      return;
+    }
+    if (this.mode === "edit" && this.cat) {
+      const c = this.cat;
+      if (!prefix) prefix = c.prefix;
+      if (cats.some((x) => x.id !== c.id && x.prefix === prefix)) {
+        this.setErr(t("catPrefixDup"));
+        return;
+      }
+      c.name = name;
+      c.prefix = prefix;
+      void this.plugin.save();
+      new import_obsidian.Notice(t("catPrefixKept"));
+    } else {
+      if (!prefix) prefix = name.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+      if (!prefix) {
+        this.setErr(t("catPrefixErr"));
+        return;
+      }
+      if (cats.some((cc) => cc.prefix === prefix)) {
+        this.setErr(t("catPrefixDup"));
+        return;
+      }
+      this.plugin.settings.categories.push({ id: "cat_" + Date.now().toString(36), name, prefix, seq: 0 });
+      void this.plugin.save();
+    }
+    this.tab.renderCategoryBadges();
+    this.tab.refreshFilterOptions();
+    this.tab.renderTable();
+    this.close();
+  }
+};
 var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
   constructor(app, plugin) {
     super(app, plugin);
@@ -1221,83 +1514,158 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     this.plugin = plugin;
   }
   display() {
+    const t = (k) => this.plugin.t(k);
     const { containerEl } = this;
     containerEl.empty();
-    const t = (k) => this.plugin.t(k);
-    new import_obsidian.Setting(containerEl).setName(t("title")).setHeading();
-    new import_obsidian.Setting(containerEl).setName(t("language")).setDesc(t("languageDesc")).addDropdown(
-      (d) => d.addOption("en", "English").addOption("zh", "\u4E2D\u6587").setValue(this.plugin.settings.language).onChange((v) => {
+    containerEl.addClass("ai-settings-v2");
+    const header = containerEl.createDiv("ai-v2-header");
+    const titleGrp = header.createDiv("ai-v2-title");
+    titleGrp.createDiv("ai-v2-h2").setText(t("headerTitle"));
+    titleGrp.createDiv("ai-v2-sub").setText(t("headerSub"));
+    const headerRight = header.createDiv("ai-v2-headerright");
+    const langWrap = headerRight.createDiv("ai-v2-lang");
+    const langEn = langWrap.createEl("button", { text: "English", type: "button" });
+    const langZh = langWrap.createEl("button", { text: "\u4E2D\u6587", type: "button" });
+    const syncLang = () => {
+      langEn.toggleClass("is-active", this.plugin.settings.language === "en");
+      langZh.toggleClass("is-active", this.plugin.settings.language === "zh");
+    };
+    syncLang();
+    langEn.addEventListener("click", () => {
+      this.plugin.settings.language = "en";
+      void this.plugin.save();
+      syncLang();
+      this.display();
+    });
+    langZh.addEventListener("click", () => {
+      this.plugin.settings.language = "zh";
+      void this.plugin.save();
+      syncLang();
+      this.display();
+    });
+    const closeBtn = headerRight.createEl("button", { text: "\xD7", type: "button", cls: "ai-v2-close", attr: { "aria-label": t("closeAria") } });
+    const body = containerEl.createDiv("ai-v2-body");
+    const leftNav = body.createDiv("ai-v2-nav");
+    const rightContent = body.createDiv("ai-v2-content");
+    const navItems = [
+      { key: "general", label: t("navGeneral"), target: "sec-general" },
+      { key: "catmap", label: t("navCatMap"), target: "sec-catmap" },
+      { key: "batch", label: t("navBatch"), target: "sec-batch" },
+      { key: "data", label: t("navData"), target: "sec-data" }
+    ];
+    const navButtons = [];
+    for (const item of navItems) {
+      const btn = leftNav.createEl("button", { text: item.label, type: "button", cls: "ai-v2-navitem" });
+      btn.addEventListener("click", () => {
+        navButtons.forEach((b) => b.toggleClass("is-active", b === btn));
+        const target = rightContent.querySelector("#" + item.target);
+        if (target) target.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      navButtons.push(btn);
+    }
+    navButtons[1].addClass("is-active");
+    const secGeneral = rightContent.createDiv("ai-v2-section");
+    secGeneral.id = "sec-general";
+    new import_obsidian.Setting(secGeneral).setName(t("secGeneral")).setHeading();
+    new import_obsidian.Setting(secGeneral).setName(t("language")).setDesc(t("languageDesc")).addDropdown((dd) => {
+      dd.addOption("en", "English").addOption("zh", "\u4E2D\u6587").setValue(this.plugin.settings.language).onChange(async (v) => {
         this.plugin.settings.language = v;
-        void this.plugin.save();
+        await this.plugin.save();
         this.display();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName(t("prefix")).setDesc(t("prefixDesc")).addText(
-      (tc) => tc.setPlaceholder("[[").setValue(this.plugin.settings.prefix).onChange((v) => {
-        this.plugin.settings.prefix = v;
-        void this.plugin.save();
-        this.renderTable();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName(t("suffix")).setDesc(t("suffixDesc")).addText(
-      (tc) => tc.setPlaceholder("]]").setValue(this.plugin.settings.suffix).onChange((v) => {
-        this.plugin.settings.suffix = v;
-        void this.plugin.save();
-        this.renderTable();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName(t("importExport")).setDesc(t("importExportDesc")).addButton(
-      (btn) => btn.setButtonText(t("exportBtn")).onClick(() => {
-        void navigator.clipboard.writeText(JSON.stringify(this.plugin.settings, null, 2)).then(() => new import_obsidian.Notice(t("prefixCopied"))).catch((e) => new import_obsidian.Notice(t("copyFail") + (e instanceof Error ? e.message : String(e))));
-      })
-    ).addButton(
-      (btn) => btn.setButtonText(t("importBtn")).onClick(() => new ImportModal(this.app, this.plugin, this).open())
-    );
-    new import_obsidian.Setting(containerEl).setName(t("batchHeading")).setHeading();
-    new import_obsidian.Setting(containerEl).setName(t("batchIncludeSub")).setDesc(t("batchIncludeSubDesc")).addToggle(
-      (tg) => tg.setValue(this.plugin.settings.batchIncludeSubfolders).onChange((v) => {
-        this.plugin.settings.batchIncludeSubfolders = v;
-        void this.plugin.save();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName(t("batchBarePolicy")).setDesc(t("batchBarePolicyDesc")).addDropdown(
-      (d) => d.addOption("confirmAll", t("batchBarePolicyConfirm")).addOption("skip", t("batchBarePolicySkip")).setValue(this.plugin.settings.batchBareCodePolicy).onChange((v) => {
-        this.plugin.settings.batchBareCodePolicy = v === "skip" ? "skip" : "confirmAll";
-        void this.plugin.save();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName(t("batchRename")).setDesc(t("batchRenameDesc")).addToggle(
-      (tg) => tg.setValue(this.plugin.settings.batchRenameTitles).onChange((v) => {
-        this.plugin.settings.batchRenameTitles = v;
-        void this.plugin.save();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName(t("batchSkipFm")).setDesc(t("batchSkipFmDesc")).addToggle(
-      (tg) => tg.setValue(this.plugin.settings.batchSkipFrontmatter).onChange((v) => {
-        this.plugin.settings.batchSkipFrontmatter = v;
-        void this.plugin.save();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName(t("batchBackup")).setDesc(t("batchBackupDesc")).addToggle(
-      (tg) => tg.setValue(this.plugin.settings.batchBackupEnabled).onChange((v) => {
-        this.plugin.settings.batchBackupEnabled = v;
-        void this.plugin.save();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName(t("batchBackupKeepName")).setDesc(t("batchBackupKeepDesc")).addText(
-      (tc) => tc.setValue(String(this.plugin.settings.batchBackupKeep)).onChange((v) => {
-        const n = Number(v);
-        if (!Number.isFinite(n)) return;
-        this.plugin.settings.batchBackupKeep = Math.min(20, Math.max(1, Math.floor(n)));
-        void this.plugin.save();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName(t("catTitle")).setHeading();
-    this.catBarEl = containerEl.createEl("div", { cls: "ai-catbar" });
-    this.uncatEl = containerEl.createEl("div", { cls: "ai-uncat is-hidden" });
-    containerEl.createEl("div", { cls: "ai-note", text: t("catPrefixDesc") });
-    new import_obsidian.Setting(containerEl).setName(t("mappingTitle")).setHeading();
-    const toolbar = containerEl.createEl("div", { cls: "ai-toolbar" });
+      });
+    });
+    new import_obsidian.Setting(secGeneral).setName(t("pasteUnmask")).setDesc(t("pasteUnmaskDesc")).addToggle((tg) => tg.setValue(this.plugin.settings.pasteUnmask).onChange(async (v) => {
+      this.plugin.settings.pasteUnmask = v;
+      await this.plugin.save();
+    }));
+    const wrapRow = secGeneral.createDiv("ai-v2-wraprow");
+    wrapRow.createDiv("ai-v2-wraplabel").setText(t("prefix") + " / " + t("suffix"));
+    const wrapInputs = wrapRow.createDiv("ai-v2-wrapinputs");
+    const preInp = wrapInputs.createEl("input", { type: "text", value: this.plugin.settings.prefix, cls: "ai-v2-pre" });
+    preInp.addEventListener("change", async () => {
+      this.plugin.settings.prefix = preInp.value || "[[";
+      await this.plugin.save();
+    });
+    wrapInputs.createSpan({ text: " " + t("realName") + " ", cls: "ai-v2-wrapmid" });
+    const sufInp = wrapInputs.createEl("input", { type: "text", value: this.plugin.settings.suffix, cls: "ai-v2-suf" });
+    sufInp.addEventListener("change", async () => {
+      this.plugin.settings.suffix = sufInp.value || "]]";
+      await this.plugin.save();
+    });
+    const secCatMap = rightContent.createDiv("ai-v2-section");
+    secCatMap.id = "sec-catmap";
+    new import_obsidian.Setting(secCatMap).setName(t("navCatMap")).setHeading();
+    const secCat = secCatMap.createDiv("ai-v2-subsection");
+    new import_obsidian.Setting(secCat).setName(t("secCategory")).setHeading();
+    secCat.createDiv("ai-v2-note").setText(t("catPrefixDesc"));
+    this.catBarEl = secCat.createDiv("ai-v2-catbar");
+    this.renderCategoryBadges();
+    this.uncatEl = secCat.createDiv("ai-v2-uncat is-hidden");
+    this.renderUncatNotice();
+    const secMap = secCatMap.createDiv("ai-v2-subsection");
+    secMap.id = "sec-mapping";
+    new import_obsidian.Setting(secMap).setName(t("secMapping")).setHeading();
+    this.buildMappingUI(secMap);
+    const secBatch = rightContent.createDiv("ai-v2-section");
+    secBatch.id = "sec-batch";
+    new import_obsidian.Setting(secBatch).setName(t("secBatch")).setHeading();
+    secBatch.createDiv("ai-v2-note").setText("v1.7.0 \xB7 " + t("batchHeading"));
+    new import_obsidian.Setting(secBatch).setName(t("batchIncludeSub")).setDesc(t("batchIncludeSubDesc")).addToggle((tg) => tg.setValue(this.plugin.settings.batchIncludeSubfolders).onChange(async (v) => {
+      this.plugin.settings.batchIncludeSubfolders = v;
+      await this.plugin.save();
+    }));
+    new import_obsidian.Setting(secBatch).setName(t("batchBarePolicy")).setDesc(t("batchBarePolicyDesc")).addDropdown((dd) => {
+      dd.addOption("confirmAll", t("batchBarePolicyConfirm")).addOption("skip", t("batchBarePolicySkip")).addOption("restoreAll", t("batchBarePolicyRestore")).setValue(this.plugin.settings.batchBareCodePolicy).onChange(async (v) => {
+        this.plugin.settings.batchBareCodePolicy = v;
+        await this.plugin.save();
+      });
+    });
+    new import_obsidian.Setting(secBatch).setName(t("batchRename")).setDesc(t("batchRenameDesc")).addToggle((tg) => tg.setValue(this.plugin.settings.batchRenameTitles).onChange(async (v) => {
+      this.plugin.settings.batchRenameTitles = v;
+      await this.plugin.save();
+    }));
+    new import_obsidian.Setting(secBatch).setName(t("batchSkipFm")).setDesc(t("batchSkipFmDesc")).addToggle((tg) => tg.setValue(this.plugin.settings.batchSkipFrontmatter).onChange(async (v) => {
+      this.plugin.settings.batchSkipFrontmatter = v;
+      await this.plugin.save();
+    }));
+    new import_obsidian.Setting(secBatch).setName(t("batchBackup")).setDesc(t("batchBackupDesc")).addToggle((tg) => tg.setValue(this.plugin.settings.batchBackupEnabled).onChange(async (v) => {
+      this.plugin.settings.batchBackupEnabled = v;
+      await this.plugin.save();
+    }));
+    new import_obsidian.Setting(secBatch).setName(t("batchBackupKeepName")).setDesc(t("batchBackupKeepDesc")).addText((tx) => {
+      tx.setValue(String(this.plugin.settings.batchBackupKeep));
+      tx.inputEl.type = "number";
+      tx.inputEl.min = "1";
+      tx.inputEl.max = "20";
+      tx.onChange(async (v) => {
+        const n = parseInt(v, 10);
+        if (!isNaN(n) && n >= 1 && n <= 20) {
+          this.plugin.settings.batchBackupKeep = n;
+          await this.plugin.save();
+        }
+      });
+    });
+    const secData = rightContent.createDiv("ai-v2-section");
+    secData.id = "sec-data";
+    new import_obsidian.Setting(secData).setName(t("navData")).setHeading();
+    new import_obsidian.Setting(secData).setName(t("exportBtn")).setDesc(t("importExportDesc")).addButton((b) => b.setButtonText(t("exportBtn")).onClick(() => this.exportMappings()));
+    new import_obsidian.Setting(secData).setName(t("importBtn")).setDesc(t("importExportDesc")).addButton((b) => b.setButtonText(t("importBtn")).onClick(() => new ImportModal(this.app, this.plugin, this).open()));
+  }
+  exportMappings() {
+    const t = (k) => this.plugin.t(k);
+    void navigator.clipboard.writeText(JSON.stringify(this.plugin.settings, null, 2)).then(() => new import_obsidian.Notice(t("prefixCopied"))).catch((e) => new import_obsidian.Notice(t("copyFail") + (e instanceof Error ? e.message : String(e))));
+  }
+  buildCategoryUI(container) {
+    const t = (k) => this.plugin.t(k);
+    this.catBarEl = container.createEl("div", { cls: "ai-catbar" });
+    this.uncatEl = container.createEl("div", { cls: "ai-uncat is-hidden" });
+    container.createEl("div", { cls: "ai-note", text: t("catPrefixDesc") });
+    this.renderCategoryBadges();
+    this.renderUncatNotice();
+  }
+  buildMappingUI(container) {
+    const t = (k) => this.plugin.t(k);
+    const toolbar = container.createEl("div", { cls: "ai-toolbar" });
     const searchWrap = toolbar.createEl("div", { cls: "ai-search" });
     this.searchEl = searchWrap.createEl("input", { type: "text", placeholder: t("searchPh") });
     this.searchEl.value = this.searchTerm;
@@ -1314,57 +1682,49 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
       this.renderTable();
     });
     this.countEl = toolbar.createEl("span", { cls: "ai-count" });
-    const btnBar = containerEl.createEl("div", { cls: "ai-btns" });
-    const addB = btnBar.createEl("button", { text: t("add"), cls: "mod-cta" });
+    const btnBar = container.createEl("div", { cls: "ai-btns" });
+    const leftGrp = btnBar.createEl("div", { cls: "ai-btns-left" });
+    const addB = leftGrp.createEl("button", { text: t("add"), cls: "mod-cta" });
     addB.addEventListener("click", () => this.toggleAddForm());
-    const batchB = btnBar.createEl("button", { text: t("batchAdd") });
+    const batchB = leftGrp.createEl("button", { text: t("batchAdd") });
     batchB.addEventListener("click", () => new BatchAddModal(this.app, this.plugin, this).open());
-    this.delSelBtn = btnBar.createEl("button", { text: t("delSel"), cls: "mod-warning" });
+    const rightGrp = btnBar.createEl("div", { cls: "ai-btns-right" });
+    this.delSelBtn = rightGrp.createEl("button", { text: t("delSel"), cls: "mod-warning" });
     this.delSelBtn.addEventListener("click", () => this.deleteSelected());
-    const clearB = btnBar.createEl("button", { text: t("clearAll"), cls: "mod-warning" });
+    const clearB = rightGrp.createEl("button", { text: t("clearAll"), cls: "mod-warning" });
     clearB.addEventListener("click", () => this.clearAll());
-    this.addFormEl = containerEl.createEl("div", { cls: "ai-addform is-hidden" });
-    const f1 = this.addFormEl.createEl("div", { cls: "ai-fld" });
-    f1.createEl("label", { text: t("realName") });
-    this.addRealEl = f1.createEl("input", { type: "text", placeholder: t("realPlaceholder") });
+    this.addFormEl = container.createEl("div", { cls: "ai-addform is-hidden" });
+    const r1 = this.addFormEl.createEl("div", { cls: "ai-frow" });
+    r1.createEl("label", { text: t("realName") });
+    this.addRealEl = r1.createEl("input", { type: "text", placeholder: t("realPlaceholder") });
     this.addRealEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
         this.addCatEl.focus();
       }
     });
-    const fCat = this.addFormEl.createEl("div", { cls: "ai-fld" });
-    fCat.createEl("label", { text: t("addCat") });
-    this.addCatEl = fCat.createEl("select", { cls: "ai-cat-sel" });
+    const rCat = this.addFormEl.createEl("div", { cls: "ai-frow" });
+    rCat.createEl("label", { text: t("addCat") });
+    this.addCatEl = rCat.createEl("select", { cls: "ai-cat-sel" });
     this.fillCatSelect(this.addCatEl, true, this.plugin.settings.categories[0]?.id ?? FILTER_UNCAT);
     this.addCatEl.addEventListener("change", () => this.updateAutoPreview());
-    const fMan = this.addFormEl.createEl("div", { cls: "ai-fld" });
-    const manLabel = fMan.createEl("label", { cls: "ai-manual-label" });
-    this.addManualEl = manLabel.createEl("input", { type: "checkbox" });
-    manLabel.createSpan({ text: " " + t("manualCode") });
-    this.addCodeEl = fMan.createEl("input", { type: "text", placeholder: t("codePlaceholder"), cls: "ai-code-in is-hidden" });
+    const rCode = this.addFormEl.createEl("div", { cls: "ai-frow" });
+    rCode.createEl("label", { text: t("codeName") });
+    this.addCodeEl = rCode.createEl("input", { type: "text", placeholder: t("codePlaceholderAuto") });
+    this.addCodeEl.addEventListener("input", () => this.updateAutoPreview());
     this.addCodeEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
         this.saveInlineAdd();
       }
     });
-    this.addManualEl.addEventListener("change", () => {
-      this.addCodeEl.toggleClass("is-hidden", !this.addManualEl.checked);
-      this.updateAutoPreview();
-    });
-    const f3 = this.addFormEl.createEl("div", { cls: "ai-fld" });
-    f3.createEl("label", { text: " " });
-    f3.createEl("button", { text: t("addSave"), cls: "mod-cta" }).addEventListener("click", () => this.saveInlineAdd());
-    const f4 = this.addFormEl.createEl("div", { cls: "ai-fld" });
-    f4.createEl("label", { text: " " });
-    f4.createEl("button", { text: t("cancel") }).addEventListener("click", () => this.toggleAddForm(true));
+    const rAct = this.addFormEl.createEl("div", { cls: "ai-frow ai-frow-act" });
+    rAct.createEl("button", { text: t("addSave"), cls: "mod-cta" }).addEventListener("click", () => this.saveInlineAdd());
+    rAct.createEl("button", { text: t("cancel") }).addEventListener("click", () => this.toggleAddForm(true));
     this.addHintEl = this.addFormEl.createEl("div", { cls: "ai-hint" });
-    this.tableEl = containerEl.createEl("div", { cls: "ai-table" });
-    this.pagerEl = containerEl.createEl("div", { cls: "ai-pager" });
-    containerEl.createEl("div", { cls: "ai-note", text: t("crudNote") });
-    this.renderCategoryBar();
-    this.renderUncatNotice();
+    this.tableEl = container.createEl("div", { cls: "ai-table" });
+    this.pagerEl = container.createEl("div", { cls: "ai-pager" });
+    container.createEl("div", { cls: "ai-note", text: t("crudNote") });
     this.renderTable();
   }
   // ---------- category manager ----------
@@ -1395,80 +1755,20 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
   normCat(v) {
     return v === FILTER_UNCAT || v === FILTER_ALL || !v ? null : v;
   }
-  renderCategoryBar() {
+  renderCategoryBadges() {
     if (!this.catBarEl) return;
     const t = (k) => this.plugin.t(k);
     this.catBarEl.empty();
-    const chips = this.catBarEl.createEl("div", { cls: "ai-chips" });
+    const badges = this.catBarEl.createEl("div", { cls: "ai-cat-badges" });
     for (const c of this.plugin.settings.categories) {
-      const chip = chips.createEl("div", { cls: "ai-chip" });
-      const nameIn = chip.createEl("input", { type: "text", value: c.name, cls: "ai-chip-name" });
-      nameIn.addEventListener("change", () => {
-        const v = nameIn.value.trim();
-        if (!v) {
-          nameIn.value = c.name;
-          return;
-        }
-        c.name = v;
-        void this.plugin.save();
-        this.refreshFilterOptions();
-      });
-      const preIn = chip.createEl("input", { type: "text", value: c.prefix, cls: "ai-chip-prefix" });
-      preIn.addEventListener("change", () => this.onPrefixChange(c, preIn));
-      const del = chip.createEl("button", { cls: "ai-chip-del" });
-      (0, import_obsidian.setIcon)(del, "x");
-      del.setAttribute("aria-label", t("catDel"));
-      del.addEventListener("click", () => this.deleteCategory(c));
+      const b = badges.createEl("button", { type: "button", cls: "ai-cat-badge " + this.pillClass(c) });
+      b.setAttribute("aria-label", t("catEditTitle") + ": " + c.name);
+      b.createSpan({ text: c.name });
+      b.createSpan({ text: " " + c.prefix, cls: "ai-cat-badge-prefix" });
+      b.addEventListener("click", () => new CategoryModal(this.app, this.plugin, this, "edit", c).open());
     }
-    const addRow = this.catBarEl.createEl("div", { cls: "ai-addcat" });
-    const nIn = addRow.createEl("input", { type: "text", placeholder: t("catNamePh") });
-    const pIn = addRow.createEl("input", { type: "text", placeholder: t("catPrefixPh") });
-    const addBtn = addRow.createEl("button", { text: "+ " + t("catAdd"), cls: "mod-cta" });
-    addBtn.addEventListener("click", () => this.addCategory(nIn, pIn));
-  }
-  onPrefixChange(c, inp) {
-    const t = (k) => this.plugin.t(k);
-    const v = inp.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-    if (!v) {
-      inp.value = c.prefix;
-      return;
-    }
-    if (this.plugin.settings.categories.some((x) => x.id !== c.id && x.prefix === v)) {
-      new import_obsidian.Notice(t("catPrefixDup"));
-      inp.value = c.prefix;
-      return;
-    }
-    c.prefix = v;
-    inp.value = v;
-    void this.plugin.save();
-    new import_obsidian.Notice(t("catPrefixKept"));
-    this.refreshFilterOptions();
-    this.renderTable();
-  }
-  addCategory(nIn, pIn) {
-    const t = (k) => this.plugin.t(k);
-    const name = nIn.value.trim();
-    let prefix = pIn.value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
-    if (!name) {
-      new import_obsidian.Notice(t("catNameErr"));
-      return;
-    }
-    if (!prefix) prefix = name.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
-    if (!prefix) {
-      new import_obsidian.Notice(t("catPrefixErr"));
-      return;
-    }
-    if (this.plugin.settings.categories.some((cc) => cc.prefix === prefix)) {
-      new import_obsidian.Notice(t("catPrefixDup"));
-      return;
-    }
-    this.plugin.settings.categories.push({ id: "cat_" + Date.now().toString(36), name, prefix, seq: 0 });
-    void this.plugin.save();
-    nIn.value = "";
-    pIn.value = "";
-    this.renderCategoryBar();
-    this.refreshFilterOptions();
-    this.renderTable();
+    const addBtn = this.catBarEl.createEl("button", { text: "+ " + t("catAdd"), cls: "mod-cta" });
+    addBtn.addEventListener("click", () => new CategoryModal(this.app, this.plugin, this, "add").open());
   }
   deleteCategory(c) {
     const t = (k) => this.plugin.t(k);
@@ -1487,7 +1787,7 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     }
     this.plugin.settings.categories = this.plugin.settings.categories.filter((x) => x.id !== c.id);
     void this.plugin.save();
-    this.renderCategoryBar();
+    this.renderCategoryBadges();
     this.refreshFilterOptions();
     this.renderTable();
   }
@@ -1536,8 +1836,6 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     } else {
       this.addRealEl.value = "";
       this.addCodeEl.value = "";
-      this.addManualEl.checked = false;
-      this.addCodeEl.toggleClass("is-hidden", true);
       this.addCatEl.value = this.plugin.settings.categories[0]?.id ?? FILTER_UNCAT;
       this.updateAutoPreview();
     }
@@ -1545,11 +1843,12 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
   updateAutoPreview() {
     const t = (k) => this.plugin.t(k);
     const cat = this.plugin.categoryById(this.addCatEl.value);
-    if (cat && !this.addManualEl.checked) {
+    const codeVal = this.addCodeEl.value.trim();
+    if (cat && !codeVal) {
       const preview = cat.prefix + String(cat.seq + 1).padStart(3, "0");
       this.addHintEl.setText(t("autoPreview").replace("%c", this.plugin.wrap(preview)));
       this.addHintEl.className = "ai-hint";
-    } else if (this.addManualEl.checked) {
+    } else if (codeVal) {
       this.addHintEl.setText("");
     } else {
       this.addHintEl.setText(t("needCat"));
@@ -1598,14 +1897,13 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     const table = tableEl.createEl("table", { cls: "ai-alias-tbl" });
     const thead = table.createEl("thead");
     const htr = thead.createEl("tr");
-    htr.createEl("th", { text: "" });
-    const thReal = htr.createEl("th", { text: t("thReal") + this.sortIndicator("real") });
+    htr.createEl("th", { cls: "ai-col-cb" });
+    const thReal = htr.createEl("th", { text: t("thReal") + this.sortIndicator("real"), cls: "ai-sortable" });
     thReal.addEventListener("click", () => this.toggleSort("real"));
-    const thCat = htr.createEl("th", { text: t("thCat") });
-    const thCode = htr.createEl("th", { text: t("thCode") + this.sortIndicator("code") });
+    htr.createEl("th", { text: t("thCat"), cls: "ai-col-cat" });
+    const thCode = htr.createEl("th", { text: t("thCode") + this.sortIndicator("code"), cls: "ai-sortable" });
     thCode.addEventListener("click", () => this.toggleSort("code"));
-    thCode.addClass("ai-right");
-    htr.createEl("th", { text: t("actions") }).addClass("ai-right");
+    htr.createEl("th", { text: t("actions"), cls: "ai-col-act" });
     const tbody = table.createEl("tbody");
     if (this.plugin.settings.mappings.length === 0) {
       const tr = tbody.createEl("tr");
@@ -1628,58 +1926,73 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     for (const m of items) {
       const tr = tbody.createEl("tr");
       if (this.selected.has(m.i)) tr.addClass("ai-sel");
-      const tdCb = tr.createEl("td");
+      const tdCb = tr.createEl("td", { cls: "ai-col-cb" });
+      const cb = tdCb.createEl("input", { type: "checkbox" });
+      cb.checked = this.selected.has(m.i);
+      cb.addEventListener("change", (e) => {
+        const checked = e.target.checked;
+        if (checked) this.selected.add(m.i);
+        else this.selected.delete(m.i);
+        tr.toggleClass("ai-sel", checked);
+        this.updateBulk();
+      });
       if (this.editing === m.i) {
-      } else {
-        const cb = tdCb.createEl("input", { type: "checkbox" });
-        cb.checked = this.selected.has(m.i);
-        cb.addEventListener("change", (e) => {
-          const checked = e.target.checked;
-          if (checked) this.selected.add(m.i);
-          else this.selected.delete(m.i);
-          tr.toggleClass("ai-sel", checked);
-          this.updateBulk();
-        });
-      }
-      if (this.editing === m.i) {
-        const tdR = tr.createEl("td");
-        const inR = tdR.createEl("input", { type: "text", cls: "ai-edit-in" });
-        inR.value = m.real;
-        const tdCat = tr.createEl("td");
+        const tdReal = tr.createEl("td", { cls: "ai-col-real" });
+        const inR = tdReal.createEl("input", { type: "text", cls: "ai-mreal-edit", value: m.real });
+        const tdCat = tr.createEl("td", { cls: "ai-col-cat" });
         const sel = tdCat.createEl("select", { cls: "ai-cat-sel" });
         this.fillCatSelect(sel, true, m.category || FILTER_UNCAT);
-        const tdC = tr.createEl("td");
-        tdC.createEl("span", { text: this.plugin.wrap(m.code), cls: "ai-code" });
-        const tdA = tr.createEl("td");
-        tdA.addClass("ai-right");
-        tdA.createEl("button", { text: t("addSave"), cls: "mod-cta" }).addEventListener(
-          "click",
-          () => this.saveEdit(m.i, inR.value, sel.value)
-        );
-        tdA.createEl("button", { text: t("cancel") }).addEventListener("click", () => {
+        const tdCode = tr.createEl("td", { cls: "ai-col-code" });
+        const fullCodeE = this.plugin.wrap(m.code);
+        tdCode.createEl("code", { text: fullCodeE, cls: "ai-mcode", title: fullCodeE });
+        const tdAct = tr.createEl("td", { cls: "ai-col-act" });
+        const saveBtn = tdAct.createEl("button", { cls: "ai-icn" });
+        (0, import_obsidian.setIcon)(saveBtn, "check");
+        saveBtn.setAttribute("aria-label", t("save"));
+        saveBtn.addEventListener("click", () => this.saveEdit(m.i, inR.value, sel.value));
+        const cancelBtn = tdAct.createEl("button", { cls: "ai-icn" });
+        (0, import_obsidian.setIcon)(cancelBtn, "x");
+        cancelBtn.setAttribute("aria-label", t("cancel"));
+        cancelBtn.addEventListener("click", () => {
           this.editing = null;
           this.renderTable();
         });
       } else {
-        tr.createEl("td", { text: m.real });
+        const tdReal = tr.createEl("td", { cls: "ai-col-real", text: m.real });
+        tdReal.setAttribute("title", m.real);
+        const tdCat = tr.createEl("td", { cls: "ai-col-cat" });
         const cat = this.plugin.categoryById(m.category);
-        tr.createEl("td", { text: cat ? cat.name : t("noCat") });
-        const tdC = tr.createEl("td", { text: this.plugin.wrap(m.code) });
-        tdC.addClass("ai-code");
-        const tdA = tr.createEl("td");
-        tdA.addClass("ai-right");
-        tdA.createEl("button", { text: t("edit") }).addEventListener("click", () => {
+        tdCat.createEl("span", {
+          text: cat ? cat.name : t("noCat"),
+          cls: "ai-pill " + this.pillClass(cat)
+        });
+        const tdCode = tr.createEl("td", { cls: "ai-col-code" });
+        const fullCode = this.plugin.wrap(m.code);
+        tdCode.createEl("code", { text: fullCode, cls: "ai-mcode", title: fullCode });
+        const tdAct = tr.createEl("td", { cls: "ai-col-act" });
+        const editBtn = tdAct.createEl("button", { cls: "ai-icn" });
+        (0, import_obsidian.setIcon)(editBtn, "pencil");
+        editBtn.setAttribute("aria-label", t("edit"));
+        editBtn.addEventListener("click", () => {
           this.editing = m.i;
           this.selected.clear();
           this.renderTable();
         });
-        tdA.createEl("button", { text: t("del"), cls: "mod-warning" }).addEventListener(
-          "click",
-          () => this.deleteOne(m.i)
-        );
+        const delBtn = tdAct.createEl("button", { cls: "ai-icn ai-icn-del" });
+        (0, import_obsidian.setIcon)(delBtn, "trash");
+        delBtn.setAttribute("aria-label", t("del"));
+        delBtn.addEventListener("click", () => this.deleteOne(m.i));
       }
     }
     this.renderPager(pages);
+  }
+  pillClass(cat) {
+    if (!cat) return "ai-pill-gray";
+    const prefix = (cat.prefix || "").toUpperCase();
+    if (prefix.includes("PLATFORM")) return "ai-pill-blue";
+    if (prefix.includes("DEPT") || prefix.includes("LEVEL") || prefix.includes("DEPARTMENT")) return "ai-pill-green";
+    if (prefix.includes("RESOURCE")) return "ai-pill-purple";
+    return "ai-pill-gray";
   }
   sortIndicator(key) {
     if (this.sortKey !== key) return "";
@@ -1731,13 +2044,12 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     const t = (k) => this.plugin.t(k);
     const real = this.addRealEl.value.trim();
     const catId = this.addCatEl.value;
-    const manual = this.addManualEl.checked;
     const codeVal = this.addCodeEl.value.trim().toUpperCase();
     if (!real) {
       this.hint(t("errEmpty"));
       return;
     }
-    if (manual) {
+    if (codeVal) {
       if (!isValidCode(codeVal)) {
         this.hint(t("errChars"));
         return;
@@ -1762,13 +2074,10 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     }
   }
   afterAdd(code) {
-    this.plugin.t("added");
     new import_obsidian.Notice(this.plugin.t("added") + this.plugin.wrap(code));
     this.addRealEl.value = "";
     this.addCodeEl.value = "";
-    this.addManualEl.checked = false;
-    this.addCodeEl.toggleClass("is-hidden", true);
-    this.addCatEl.value = "";
+    this.addCatEl.value = this.plugin.settings.categories[0]?.id ?? FILTER_UNCAT;
     this.updateAutoPreview();
     this.renderTable();
     this.renderUncatNotice();
@@ -1936,6 +2245,7 @@ var AIAliasPlugin = class extends import_obsidian.Plugin {
     await this.loadSettings();
     this.settingsTab = new AIAliasSettingTab(this.app, this);
     this.addSettingTab(this.settingsTab);
+    this.addRibbonIcon("table", this.t("cmdOpenMappings"), () => new MappingTableModal(this.app, this).open());
     this.registerCommands();
     this.registerEvent(
       this.app.workspace.on("editor-menu", (menu, editor) => {
@@ -1960,6 +2270,9 @@ var AIAliasPlugin = class extends import_obsidian.Plugin {
       );
     } catch {
     }
+    this.registerEvent(
+      this.app.workspace.on("editor-paste", (evt, editor) => this.onEditorPaste(evt, editor))
+    );
   }
   registerCommands() {
     this.addCommand({
@@ -1983,6 +2296,11 @@ var AIAliasPlugin = class extends import_obsidian.Plugin {
       }
     });
     this.addCommand({
+      id: "open-mappings",
+      name: this.t("cmdOpenMappings"),
+      callback: () => new MappingTableModal(this.app, this).open()
+    });
+    this.addCommand({
       id: "undo-last-batch",
       name: this.t("cmdUndo"),
       callback: () => {
@@ -1994,7 +2312,8 @@ var AIAliasPlugin = class extends import_obsidian.Plugin {
   isBatchTarget(f) {
     if (f.extension !== "md") return false;
     const p = f.path;
-    return !p.startsWith(".obsidian/") && !p.startsWith(".trash/");
+    const cfg = this.app.vault.configDir;
+    return !p.startsWith(cfg + "/") && !p.startsWith(".trash/");
   }
   mdFilesUnder(folder) {
     const out = [];
@@ -2022,7 +2341,7 @@ var AIAliasPlugin = class extends import_obsidian.Plugin {
   }
   addBatchMenu(menu, items, multi) {
     const singleFile = !multi && items.length === 1 && items[0] instanceof import_obsidian.TFile;
-    if (singleFile && !this.isBatchTarget(items[0])) return;
+    if (singleFile && items[0] instanceof import_obsidian.TFile && !this.isBatchTarget(items[0])) return;
     const targets = this.collectTargets(items);
     const n = targets.length;
     if (multi && n === 0) return;
@@ -2130,7 +2449,8 @@ var AIAliasPlugin = class extends import_obsidian.Plugin {
       scan.decrypted = this.decrypt(content);
       scan.bareHits = this.toCodeHits(this.scanBareCodes(scan.decrypted));
       scan.titleHits = this.toCodeHits(this.scanBareCodes(file.basename));
-      scan.bareChecks = scan.bareHits.map(() => false);
+      const barePolicy = this.settings.batchBareCodePolicy;
+      scan.bareChecks = scan.bareHits.map(() => barePolicy === "restoreAll");
       scan.titleChecks = scan.titleHits.map(() => false);
     }
     return scan;
@@ -2334,6 +2654,21 @@ var AIAliasPlugin = class extends import_obsidian.Plugin {
   wrap(code) {
     return this.settings.prefix + code + this.settings.suffix;
   }
+  // v1.8.0: paste auto-unmask — restores real names in pasted text when the
+  // toggle is on. We take over the paste only when the clipboard actually
+  // contains wrapped aliases, so normal pastes are untouched.
+  onEditorPaste(evt, editor) {
+    if (!this.settings.pasteUnmask) return;
+    if (evt.defaultPrevented) return;
+    if (this.settings.mappings.length === 0) return;
+    const data = evt.clipboardData ? evt.clipboardData.getData("text/plain") : "";
+    if (!data) return;
+    const out = this.decrypt(data);
+    if (out === data) return;
+    evt.preventDefault();
+    editor.replaceSelection(out);
+    new import_obsidian.Notice(this.t("pasteUnmasked"));
+  }
   runEncrypt(editor) {
     if (this.settings.mappings.length === 0) {
       new import_obsidian.Notice(this.t("emptyEncrypt"));
@@ -2427,7 +2762,10 @@ var AIAliasPlugin = class extends import_obsidian.Plugin {
     this.settings.batchSkipFrontmatter = this.settings.batchSkipFrontmatter !== false;
     this.settings.batchBackupEnabled = this.settings.batchBackupEnabled !== false;
     this.settings.batchRenameTitles = this.settings.batchRenameTitles === true;
-    if (this.settings.batchBareCodePolicy !== "skip") this.settings.batchBareCodePolicy = "confirmAll";
+    if (this.settings.batchBareCodePolicy !== "skip" && this.settings.batchBareCodePolicy !== "restoreAll") {
+      this.settings.batchBareCodePolicy = "confirmAll";
+    }
+    this.settings.pasteUnmask = this.settings.pasteUnmask === true;
     const keep = Number(this.settings.batchBackupKeep);
     this.settings.batchBackupKeep = Number.isFinite(keep) ? Math.min(20, Math.max(1, Math.floor(keep))) : 5;
     let migrated = false;
