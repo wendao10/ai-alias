@@ -2104,10 +2104,6 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     if (idx < 0) idx = customs.length;
     return "ai-pill-c" + idx % 20;
   }
-  sortIndicator(key) {
-    if (this.sortKey !== key) return "";
-    return this.sortDir > 0 ? " \u25B2" : " \u25BC";
-  }
   renderPager(total, pages) {
     this.pagerEl.empty();
     this.pagerEl.createEl("span", { cls: "ai-pager-text", text: `\u5171 ${total} \u6761 \xB7 \u7B2C ${this.page + 1} / ${pages} \u9875` });
@@ -2127,14 +2123,6 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
         this.renderTable();
       }
     });
-  }
-  toggleSort(k) {
-    if (this.sortKey === k) this.sortDir *= -1;
-    else {
-      this.sortKey = k;
-      this.sortDir = 1;
-    }
-    this.renderTable();
   }
   hint(msg) {
     this.addHintEl.setText(msg);

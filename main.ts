@@ -2468,11 +2468,6 @@ class AIAliasSettingTab extends PluginSettingTab {
 		return 'ai-pill-c' + (idx % 20);
 	}
 
-	private sortIndicator(key: 'real' | 'code'): string {
-		if (this.sortKey !== key) return '';
-		return this.sortDir > 0 ? ' ▲' : ' ▼';
-	}
-
 	private renderPager(total: number, pages: number): void {
 		this.pagerEl.empty();
 		this.pagerEl.createEl('span', { cls: 'ai-pager-text', text: `共 ${total} 条 · 第 ${this.page + 1} / ${pages} 页` });
@@ -2492,15 +2487,6 @@ class AIAliasSettingTab extends PluginSettingTab {
 				this.renderTable();
 			}
 		});
-	}
-
-	private toggleSort(k: 'real' | 'code'): void {
-		if (this.sortKey === k) this.sortDir *= -1;
-		else {
-			this.sortKey = k;
-			this.sortDir = 1;
-		}
-		this.renderTable();
 	}
 
 	private hint(msg: string): void {
