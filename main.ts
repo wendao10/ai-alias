@@ -92,7 +92,7 @@ const PAGE = 10;
 const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 	en: {
 		headerTitle: 'AI Alias',
-		headerSub: 'Local privacy gateway for AI',
+		headerSub: 'AI Encryption Computing Assistant',
 		navGeneral: 'General',
 		navCatMap: 'Categories & mappings',
 		navBatch: 'Batch operations',
@@ -111,7 +111,7 @@ const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 		pasteUnmask: 'Paste & auto-unmask',
 		pasteUnmaskDesc: 'When you paste text that contains aliases (e.g. from an AI reply), automatically restore the real names in the pasted text. Only the pasted text is affected.',
 		pasteUnmasked: 'Auto-restored aliases in pasted text',
-		add: 'Add',
+		add: 'Single',
 		importExport: 'Import / Export mappings',
 		importExportDesc: 'Export: copy JSON to clipboard (safe, not written to any note). Import: paste JSON from clipboard; choose Clear & insert or Insert.',
 		exportBtn: 'Export to clipboard',
@@ -120,14 +120,16 @@ const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 		mappingTitle: 'Mapping table',
 		openMappingDesc: 'Open in a wider full-screen window (recommended to avoid the narrow right-side panel).',
 		mappingInlineDesc: 'Search, add, edit and delete mappings here. Entries are shown 10 per page; use the category dropdown to filter.',
-		searchPh: 'Search real name, alias or category…',
-		batchAdd: 'Batch add',
+		searchPh: 'Search real name / alias…',
+		batchAdd: 'Batch',
 		delSel: 'Delete selected',
 		clearAll: 'Clear all',
+		toolImport: 'Import',
+		toolExport: 'Export',
 		addSave: 'Add',
 		save: 'Save',
 		cancel: 'Cancel',
-		thReal: 'Original name',
+		thReal: 'Real name',
 		thCode: 'Alias',
 		thCat: 'Category',
 		actions: 'Actions',
@@ -152,7 +154,7 @@ const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 		previewWarn: 'Skipped: ',
 		dupInBatch: 'duplicate in batch',
 		importMergeOk: 'Inserted %d new entries',
-		crudNote: 'Tips: search filters live (real/alias/category); use the category dropdown to filter; click a column header to sort; the add form auto-generates the alias from the chosen category; pages of 10.',
+		crudNote: 'Tips: search filters live (real/alias/category); use the category dropdown to filter; the add form auto-generates the alias from the chosen category; pages of 10.',
 		// import
 		importTitle: 'Import Mappings (paste JSON)',
 		importFormat: 'Format: { "prefix":"[[", "suffix":"]]", "mappings":[{ "real":"...", "code":"PROJ_01", "category":"platform" }] }.',
@@ -196,6 +198,7 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		// category auto-alias (v1.6.0)
 		catTitle: 'Categories',
 		catAdd: 'Add category',
+		custom: 'Custom',
 		catAddTitle: 'Add category',
 		catEditTitle: 'Edit category',
 		catNamePh: 'Name',
@@ -212,7 +215,7 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		manualCode: 'Manual alias (optional)',
 		autoPreview: 'Will generate: %c',
 		needCat: 'Select a category or enter a manual alias',
-		noCat: 'Uncategorized',
+		noCat: '—',
 		allCats: 'All categories',
 		uncatNotice: 'Found %d uncategorized mapping(s). You can auto-categorize or keep them (decryption unaffected).',
 		smartCat: 'Auto-categorize',
@@ -232,6 +235,7 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		batchCatDefault: 'Default category',
 		// ---- v1.7.0 batch operations: settings ----
 		batchHeading: 'Batch operations (file explorer)',
+		batchNote: 'Batch operations settings',
 		batchIncludeSub: 'Include subfolders',
 		batchIncludeSubDesc: 'When running a batch action on a folder, also process notes inside its subfolders.',
 		batchBarePolicy: 'Bare alias codes on batch decrypt',
@@ -320,6 +324,9 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		importPreviewHead: '%v valid · %s duplicates skipped',
 		importWillInsert: 'Will insert %d entries',
 		importDoBtn: 'Import %d entries',
+		importJsonHead: 'Export file detected · %v mappings',
+		importJsonCats: ' · %c categories',
+		importCatApplied: ' · %c categories applied',
 		// ---- v1.7.0 batch operations: undo ----
 		cmdUndo: 'AI Alias: Undo last batch operation (撤销上次批量操作)',
 		undoNone: 'No batch snapshot found',
@@ -341,7 +348,7 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 	},
 	zh: {
 		headerTitle: 'AI Alias 设置',
-		headerSub: '面向 AI 的本地隐私脱敏中间件',
+		headerSub: 'AI加密计算助手',
 		navGeneral: '通用',
 		navCatMap: '分类与映射',
 		navBatch: '批量操作',
@@ -360,7 +367,7 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		pasteUnmask: '粘贴即还原',
 		pasteUnmaskDesc: '粘贴包含代号的内容（如 AI 回复）时，自动把代号还原为真实名称。仅影响粘贴进来的文本。',
 		pasteUnmasked: '已自动还原粘贴文本中的代号',
-		add: '新增',
+		add: '单条',
 		importExport: '导入 / 导出映射',
 		importExportDesc: '导出：复制 JSON 到剪贴板（安全，不写入任何笔记）。导入：从剪贴板粘贴 JSON，可选择清空后插入或插入。',
 		exportBtn: '导出到剪贴板',
@@ -369,16 +376,18 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		mappingTitle: '映射表',
 		openMappingDesc: '在更宽的全屏窗口中管理映射表（推荐，避免右侧设置面板过窄）。',
 		mappingInlineDesc: '在此搜索、新增、编辑、删除映射。每页显示 10 条，可用类别下拉筛选。',
-		searchPh: '搜索原文 / 代号 / 类别…',
-		batchAdd: '批量新增',
+		searchPh: '搜索真实名 / 代号…',
+		batchAdd: '批量',
 		delSel: '删除选中',
 		clearAll: '清空全部',
+		toolImport: '导入',
+		toolExport: '导出',
 		addSave: '新增',
 		save: '保存',
 		cancel: '取消',
-		thReal: '原文',
+		thReal: '真实名',
 		thCode: '代号',
-		thCat: '类别',
+		thCat: '分类',
 		actions: '操作',
 		edit: '编辑',
 		del: '删除',
@@ -401,7 +410,7 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		previewWarn: '跳过：',
 		dupInBatch: '批量内重复',
 		importMergeOk: '已插入 %d 条新映射',
-		crudNote: '提示：搜索实时筛选（原文/代号/类别）；用类别下拉筛选；点击表头排序；新增时按所选类别自动出码；每页 10 条分页。',
+		crudNote: '提示：搜索实时筛选（真实名/代号/分类）；用分类下拉筛选；新增时按所选分类自动出码；每页 10 条分页。',
 		// import
 		importTitle: '导入映射表（粘贴 JSON）',
 		importFormat: '格式：{ "prefix":"[[", "suffix":"]]", "mappings":[{ "real":"...", "code":"PROJ_01", "category":"platform" }] }。',
@@ -445,6 +454,7 @@ cmdPrefix: 'AI Alias：复制 AI 提示词前缀（Copy AI prompt prefix）',
 		// 分类自动代号 (v1.6.0)
 		catTitle: '类别',
 		catAdd: '新增类别',
+		custom: '自定义',
 		catAddTitle: '新增类别',
 		catEditTitle: '编辑类别',
 		catNamePh: '名称',
@@ -461,7 +471,7 @@ cmdPrefix: 'AI Alias：复制 AI 提示词前缀（Copy AI prompt prefix）',
 		manualCode: '手动指定代号（可选）',
 		autoPreview: '将生成：%c',
 		needCat: '请选择类别或填写手动代号',
-		noCat: '未分类',
+		noCat: '—',
 		allCats: '全部分类',
 		uncatNotice: '检测到 %d 条历史映射未分类，可一键智能补类别，或保持未分类（不影响解密）。',
 		smartCat: '智能补类别',
@@ -481,6 +491,7 @@ cmdPrefix: 'AI Alias：复制 AI 提示词前缀（Copy AI prompt prefix）',
 		batchCatDefault: '默认类别',
 		// ---- v1.7.0 批量操作：设置项 ----
 		batchHeading: '批量操作（文件列表右键）',
+		batchNote: '批量操作设置',
 		batchIncludeSub: '包含子文件夹',
 		batchIncludeSubDesc: '对文件夹执行批量操作时，是否一并处理其子文件夹内的笔记。',
 		batchBarePolicy: '批量解密时的裸代号策略',
@@ -568,6 +579,9 @@ cmdPrefix: 'AI Alias：复制 AI 提示词前缀（Copy AI prompt prefix）',
 		importPreviewHead: '%v 条有效 · %s 条重复已跳过',
 		importWillInsert: '将插入 %d 条',
 		importDoBtn: '导入 %d 条',
+		importJsonHead: '已识别导出文件 · %v 条映射',
+		importJsonCats: ' · %c 个分类',
+		importCatApplied: ' · 已应用 %c 个分类',
 		// ---- v1.7.0 批量操作：撤销 ----
 		cmdUndo: 'AI Alias：撤销上次批量操作（Undo last batch operation）',
 		undoNone: '没有找到批量操作快照',
@@ -912,7 +926,6 @@ class BatchAddModal extends Modal {
 		void this.plugin.save();
 		new Notice(this.plugin.t('addedN').replace('%d', String(this.preview.valid.length)));
 		this.tab.renderTable();
-		this.tab.renderUncatNotice();
 		this.close();
 	}
 
@@ -927,6 +940,8 @@ class ImportModal extends Modal {
 	taEl!: HTMLTextAreaElement;
 	mode: 'merge' | 'overwrite' = 'merge';
 	preview: { valid: { real: string; code: string; category: string | null; manual: boolean }[]; skipped: { line: string; reason: string }[] } | null = null;
+	isJson = false;
+	importCategories: Category[] | null = null;
 	importBtn!: HTMLButtonElement;
 	importLabel!: HTMLElement;
 	previewEl!: HTMLElement;
@@ -984,6 +999,42 @@ class ImportModal extends Modal {
 
 	parse(): void {
 		const t = (k: string): string => this.plugin.t(k);
+		const text = this.taEl.value.trim();
+		// ---- JSON export format (from exportMappings) ----
+		if (text) {
+			const json = this.tryParseJSON(text);
+			if (json) {
+				const valid: { real: string; code: string; category: string | null; manual: boolean }[] = [];
+				const skipped: { line: string; reason: string }[] = [];
+				const used = new Set(this.mode === 'overwrite' ? [] : this.plugin.settings.mappings.map((mm) => mm.code));
+				for (const m of json.mappings) {
+					const real = (m.real ?? '').trim();
+					const code = (m.code ?? '').trim().toUpperCase();
+					if (!real || !code) {
+						skipped.push({ line: JSON.stringify(m), reason: t('errEmptyField') });
+						continue;
+					}
+					if (!isValidCode(code)) {
+						skipped.push({ line: code, reason: t('errInvalid') + code });
+						continue;
+					}
+					if (used.has(code)) {
+						skipped.push({ line: code, reason: t('errDuplicate') + code });
+						continue;
+					}
+					used.add(code);
+					valid.push({ real, code, category: m.category, manual: m.manual === true });
+				}
+				this.isJson = true;
+				this.importCategories = json.categories;
+				this.preview = { valid, skipped };
+				this.renderPreview();
+				return;
+			}
+		}
+		// ---- legacy line-based format: real=code ----
+		this.isJson = false;
+		this.importCategories = null;
 		const raw = this.taEl.value.split(/\r?\n/);
 		const valid: { real: string; code: string; category: string | null; manual: boolean }[] = [];
 		const skipped: { line: string; reason: string }[] = [];
@@ -1017,6 +1068,55 @@ class ImportModal extends Modal {
 		this.renderPreview();
 	}
 
+	// Recognize the exportMappings() JSON output (full AIAliasSettings or a
+	// bare mappings array) and normalize it into import-ready rows.
+	private tryParseJSON(text: string): { mappings: { real: string; code: string; category: string | null; manual: boolean }[]; categories: Category[] | null } | null {
+		let obj: unknown;
+		try {
+			obj = JSON.parse(text);
+		} catch {
+			return null;
+		}
+		if (obj == null || typeof obj !== 'object') return null;
+		let arr: any[] | null = null;
+		if (Array.isArray(obj)) {
+			arr = obj as any[];
+		} else if (Array.isArray((obj as any).mappings)) {
+			arr = (obj as any).mappings as any[];
+		} else {
+			return null;
+		}
+		const cats: Category[] | null =
+			!Array.isArray(obj) && Array.isArray((obj as any).categories) ? ((obj as any).categories as Category[]) : null;
+		const norm = (v: string | null): string | null =>
+			v === FILTER_UNCAT || v === FILTER_ALL || !v ? null : v;
+		const mappings: { real: string; code: string; category: string | null; manual: boolean }[] = [];
+		for (const it of arr) {
+			if (it == null || typeof it !== 'object') {
+				if (Array.isArray(it) && it.length >= 2) {
+					const real = String(it[0]).trim();
+					const code = String(it[1]).trim().toUpperCase();
+					if (real && code && isValidCode(code)) {
+						mappings.push({ real, code, category: null, manual: true });
+					}
+				}
+				continue;
+			}
+			const real = typeof it.real === 'string' ? it.real.trim() : '';
+			const codeRaw =
+				typeof it.code === 'string'
+					? it.code.trim().toUpperCase()
+					: typeof it.code === 'number'
+					? String(it.code)
+					: '';
+			if (!real || !codeRaw || !isValidCode(codeRaw)) continue;
+			const catRaw = it.category === undefined || it.category === null ? null : String(it.category);
+			const manual = typeof it.manual === 'boolean' ? it.manual : catRaw === null;
+			mappings.push({ real, code: codeRaw, category: norm(catRaw), manual });
+		}
+		return { mappings, categories: cats };
+	}
+
 	private renderPreview(): void {
 		const t = (k: string): string => this.plugin.t(k);
 		if (!this.preview) return;
@@ -1026,6 +1126,10 @@ class ImportModal extends Modal {
 		if (total === 0) {
 			this.previewHeader.setText(t('importPreviewEmpty') || '\u9884\u89c8\uff1a\u8bf7\u8f93\u5165\u8981\u5bfc\u5165\u7684\u6620\u5c04');
 			this.previewEl.createDiv('ai-import-previewempty').setText('');
+		} else if (this.isJson) {
+			let head = t('importJsonHead').replace('%v', String(valid.length));
+			if (this.importCategories) head += t('importJsonCats').replace('%c', String(this.importCategories.length));
+			this.previewHeader.setText(head);
 		} else {
 			const headText = t('importPreviewHead') || '%v \u6761\u6709\u6548 \u00b7 %s \u6761\u91cd\u590d\u5df2\u8df3\u8fc7';
 			this.previewHeader.setText(headText.replace('%v', String(valid.length)).replace('%s', String(skipped.length)));
@@ -1054,20 +1158,28 @@ class ImportModal extends Modal {
 
 	doImport(): void {
 		const t = (k: string): string => this.plugin.t(k);
-		if (!this.preview || this.preview.valid.length === 0) return;
+		if (!this.preview) return;
 		const { valid } = this.preview;
+		const hasCats = !!this.importCategories && this.importCategories.length > 0;
+		if (valid.length === 0 && !hasCats) return;
 		if (this.mode === 'overwrite') {
 			this.plugin.settings.mappings = [];
+			if (this.importCategories) this.plugin.settings.categories = this.importCategories.slice();
+		} else if (hasCats) {
+			const existIds = new Set(this.plugin.settings.categories.map((c) => c.id));
+			for (const c of this.importCategories!) {
+				if (!existIds.has(c.id)) this.plugin.settings.categories.push(c);
+			}
 		}
 		for (const v of valid) {
 			this.plugin.settings.mappings.push(v);
 		}
 		void this.plugin.save();
 		const n = valid.length;
-		const msg = this.mode === 'overwrite' ? (t('imported').replace('%d', String(n))) : (t('importMergeOk').replace('%d', String(n)));
+		let msg: string = this.mode === 'overwrite' ? t('imported').replace('%d', String(n)) : t('importMergeOk').replace('%d', String(n));
+		if (hasCats) msg += t('importCatApplied').replace('%c', String(this.importCategories!.length));
 		new Notice(msg);
 		this.tab.renderTable();
-		this.tab.renderUncatNotice();
 		this.close();
 	}
 
@@ -1785,12 +1897,12 @@ class AIAliasSettingTab extends PluginSettingTab {
 	private selected = new Set<number>();
 	private editing: number | null = null;
 	private addOpen = false;
+	private codeTouched = false;
 	private page = 0;
 	private filterCat = FILTER_ALL;
 
 	// DOM refs
 	private searchEl!: HTMLInputElement;
-	private countEl!: HTMLElement;
 	private tableEl!: HTMLElement;
 	private pagerEl!: HTMLElement;
 	private addFormEl!: HTMLElement;
@@ -1800,8 +1912,6 @@ class AIAliasSettingTab extends PluginSettingTab {
 	private addHintEl!: HTMLElement;
 	private filterSel!: HTMLSelectElement;
 	private catBarEl!: HTMLElement;
-	private uncatEl!: HTMLElement;
-	private delSelBtn!: HTMLElement;
 
 	constructor(app: App, plugin: AIAliasPlugin) {
 		super(app, plugin);
@@ -1840,34 +1950,11 @@ class AIAliasSettingTab extends PluginSettingTab {
 			syncLang();
 			this.display();
 		});
-		const closeBtn = headerRight.createEl('button', { text: '\u00d7', type: 'button', cls: 'ai-v2-close', attr: { 'aria-label': t('closeAria') } });
-		// Obsidian settings tab has no programmatic close; the X is decorative.
-
-		// ===== Body =====
+		// ===== Body (single column) =====
 		const body = containerEl.createDiv('ai-v2-body');
-		const leftNav = body.createDiv('ai-v2-nav');
-		const rightContent = body.createDiv('ai-v2-content');
-
-		const navItems: { key: string; label: string; target: string }[] = [
-			{ key: 'general', label: t('navGeneral'), target: 'sec-general' },
-			{ key: 'catmap', label: t('navCatMap'), target: 'sec-catmap' },
-			{ key: 'batch', label: t('navBatch'), target: 'sec-batch' },
-			{ key: 'data', label: t('navData'), target: 'sec-data' }
-		];
-		const navButtons: HTMLButtonElement[] = [];
-		for (const item of navItems) {
-			const btn = leftNav.createEl('button', { text: item.label, type: 'button', cls: 'ai-v2-navitem' });
-			btn.addEventListener('click', () => {
-				navButtons.forEach((b) => b.toggleClass('is-active', b === btn));
-				const target = rightContent.querySelector('#' + item.target);
-				if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-			});
-			navButtons.push(btn);
-		}
-		navButtons[1].addClass('is-active');
 
 		// ===== Sec_通用 (General) =====
-		const secGeneral = rightContent.createDiv('ai-v2-section');
+		const secGeneral = body.createDiv('ai-v2-section');
 		secGeneral.id = 'sec-general';
 		new Setting(secGeneral).setName(t('secGeneral')).setHeading();
 		new Setting(secGeneral).setName(t('language')).setDesc(t('languageDesc')).addDropdown((dd) => {
@@ -1888,21 +1975,20 @@ class AIAliasSettingTab extends PluginSettingTab {
 		wrapRow.createDiv('ai-v2-wraplabel').setText(t('prefix') + ' / ' + t('suffix'));
 		const wrapInputs = wrapRow.createDiv('ai-v2-wrapinputs');
 		const preInp = wrapInputs.createEl('input', { type: 'text', value: this.plugin.settings.prefix, cls: 'ai-v2-pre' });
-		preInp.addEventListener('change', async () => {
+		preInp.addEventListener('change', () => {
 			this.plugin.settings.prefix = preInp.value || '[[';
-			await this.plugin.save();
+			void this.plugin.save();
 		});
 		wrapInputs.createSpan({ text: ' ' + t('realName') + ' ', cls: 'ai-v2-wrapmid' });
 		const sufInp = wrapInputs.createEl('input', { type: 'text', value: this.plugin.settings.suffix, cls: 'ai-v2-suf' });
-		sufInp.addEventListener('change', async () => {
+		sufInp.addEventListener('change', () => {
 			this.plugin.settings.suffix = sufInp.value || ']]';
-			await this.plugin.save();
+			void this.plugin.save();
 		});
 
 		// ===== Sec_分类与映射 (Categories & Mappings combined) =====
-		const secCatMap = rightContent.createDiv('ai-v2-section');
+		const secCatMap = body.createDiv('ai-v2-section');
 		secCatMap.id = 'sec-catmap';
-		new Setting(secCatMap).setName(t('navCatMap')).setHeading();
 
 		// Category sub-section
 		const secCat = secCatMap.createDiv('ai-v2-subsection');
@@ -1910,8 +1996,6 @@ class AIAliasSettingTab extends PluginSettingTab {
 		secCat.createDiv('ai-v2-note').setText(t('catPrefixDesc'));
 		this.catBarEl = secCat.createDiv('ai-v2-catbar');
 		this.renderCategoryBadges();
-		this.uncatEl = secCat.createDiv('ai-v2-uncat is-hidden');
-		this.renderUncatNotice();
 
 		// Mapping sub-section
 		const secMap = secCatMap.createDiv('ai-v2-subsection');
@@ -1920,10 +2004,10 @@ class AIAliasSettingTab extends PluginSettingTab {
 		this.buildMappingUI(secMap);
 
 		// ===== Sec_批量操作 (Batch operations) =====
-		const secBatch = rightContent.createDiv('ai-v2-section');
+		const secBatch = body.createDiv('ai-v2-section');
 		secBatch.id = 'sec-batch';
 		new Setting(secBatch).setName(t('secBatch')).setHeading();
-		secBatch.createDiv('ai-v2-note').setText('v1.7.0 \u00b7 ' + t('batchHeading'));
+		secBatch.createDiv('ai-v2-note').setText(t('batchNote'));
 		new Setting(secBatch).setName(t('batchIncludeSub')).setDesc(t('batchIncludeSubDesc')).addToggle((tg) => tg.setValue(this.plugin.settings.batchIncludeSubfolders).onChange(async (v) => {
 			this.plugin.settings.batchIncludeSubfolders = v;
 			await this.plugin.save();
@@ -1965,7 +2049,7 @@ class AIAliasSettingTab extends PluginSettingTab {
 		});
 
 		// ===== Sec_数据管理 (Data management) - import/export =====
-		const secData = rightContent.createDiv('ai-v2-section');
+		const secData = body.createDiv('ai-v2-section');
 		secData.id = 'sec-data';
 		new Setting(secData).setName(t('navData')).setHeading();
 		new Setting(secData).setName(t('exportBtn')).setDesc(t('importExportDesc')).addButton((b) => b.setButtonText(t('exportBtn')).onClick(() => this.exportMappings()));
@@ -1978,15 +2062,6 @@ class AIAliasSettingTab extends PluginSettingTab {
 			.writeText(JSON.stringify(this.plugin.settings, null, 2))
 			.then(() => new Notice(t('prefixCopied')))
 			.catch((e) => new Notice(t('copyFail') + (e instanceof Error ? e.message : String(e))));
-	}
-
-	private buildCategoryUI(container: HTMLElement): void {
-		const t = (k: string): string => this.plugin.t(k);
-		this.catBarEl = container.createEl('div', { cls: 'ai-catbar' });
-		this.uncatEl = container.createEl('div', { cls: 'ai-uncat is-hidden' });
-		container.createEl('div', { cls: 'ai-note', text: t('catPrefixDesc') });
-		this.renderCategoryBadges();
-		this.renderUncatNotice();
 	}
 
 	buildMappingUI(container: HTMLElement): void {
@@ -2002,25 +2077,24 @@ class AIAliasSettingTab extends PluginSettingTab {
 			this.renderTable();
 		});
 		this.filterSel = toolbar.createEl('select', { cls: 'ai-catfilter' });
-		this.fillCatSelect(this.filterSel, true, this.filterCat, true);
+		this.fillCatSelect(this.filterSel, false, this.filterCat, true);
 		this.filterSel.addEventListener('change', () => {
 			this.filterCat = this.filterSel.value;
 			this.page = 0;
 			this.renderTable();
 		});
-		this.countEl = toolbar.createEl('span', { cls: 'ai-count' });
 
 		const btnBar = container.createEl('div', { cls: 'ai-btns' });
 		const leftGrp = btnBar.createEl('div', { cls: 'ai-btns-left' });
-		const addB = leftGrp.createEl('button', { text: t('add'), cls: 'mod-cta' });
+		const addB = leftGrp.createEl('button', { text: '+ ' + t('add'), cls: 'mod-cta' });
 		addB.addEventListener('click', () => this.toggleAddForm());
-		const batchB = leftGrp.createEl('button', { text: t('batchAdd') });
+		const batchB = leftGrp.createEl('button', { text: '+ ' + t('batchAdd') });
 		batchB.addEventListener('click', () => new BatchAddModal(this.app, this.plugin, this).open());
 		const rightGrp = btnBar.createEl('div', { cls: 'ai-btns-right' });
-		this.delSelBtn = rightGrp.createEl('button', { text: t('delSel'), cls: 'mod-warning' });
-		this.delSelBtn.addEventListener('click', () => this.deleteSelected());
-		const clearB = rightGrp.createEl('button', { text: t('clearAll'), cls: 'mod-warning' });
-		clearB.addEventListener('click', () => this.clearAll());
+		const importB = rightGrp.createEl('button', { text: t('toolImport') });
+		importB.addEventListener('click', () => new ImportModal(this.app, this.plugin, this).open());
+		const exportB = rightGrp.createEl('button', { text: t('toolExport') });
+		exportB.addEventListener('click', () => this.exportMappings());
 
 		this.addFormEl = container.createEl('div', { cls: 'ai-addform is-hidden' });
 		const r1 = this.addFormEl.createEl('div', { cls: 'ai-frow' });
@@ -2035,12 +2109,12 @@ class AIAliasSettingTab extends PluginSettingTab {
 		const rCat = this.addFormEl.createEl('div', { cls: 'ai-frow' });
 		rCat.createEl('label', { text: t('addCat') });
 		this.addCatEl = rCat.createEl('select', { cls: 'ai-cat-sel' });
-		this.fillCatSelect(this.addCatEl, true, this.plugin.settings.categories[0]?.id ?? FILTER_UNCAT);
+		this.fillCatSelect(this.addCatEl, false, this.plugin.settings.categories[0]?.id ?? '');
 		this.addCatEl.addEventListener('change', () => this.updateAutoPreview());
 		const rCode = this.addFormEl.createEl('div', { cls: 'ai-frow' });
 		rCode.createEl('label', { text: t('codeName') });
 		this.addCodeEl = rCode.createEl('input', { type: 'text', placeholder: t('codePlaceholderAuto') });
-		this.addCodeEl.addEventListener('input', () => this.updateAutoPreview());
+		this.addCodeEl.addEventListener('input', () => { this.codeTouched = true; this.updateAutoPreview(); });
 		this.addCodeEl.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter') {
 				e.preventDefault();
@@ -2103,7 +2177,7 @@ class AIAliasSettingTab extends PluginSettingTab {
 			b.createSpan({ text: ' ' + c.prefix, cls: 'ai-cat-badge-prefix' });
 			b.addEventListener('click', () => new CategoryModal(this.app, this.plugin, this, 'edit', c).open());
 		}
-		const addBtn = this.catBarEl.createEl('button', { text: '+ ' + t('catAdd'), cls: 'mod-cta' });
+		const addBtn = this.catBarEl.createEl('button', { text: t('custom'), cls: 'ai-cat-add' });
 		addBtn.addEventListener('click', () => new CategoryModal(this.app, this.plugin, this, 'add').open());
 	}
 
@@ -2131,44 +2205,14 @@ class AIAliasSettingTab extends PluginSettingTab {
 	refreshFilterOptions(): void {
 		if (this.filterSel) {
 			const cur = this.filterSel.value;
-			this.fillCatSelect(this.filterSel, true, cur, true);
+			this.fillCatSelect(this.filterSel, false, cur, true);
 		}
 		// Keep the inline "add mapping" category dropdown in sync with
 		// the live categories (otherwise newly added categories are missing).
 		if (this.addCatEl) {
 			const cur = this.addCatEl.value;
-			this.fillCatSelect(this.addCatEl, true, cur);
+			this.fillCatSelect(this.addCatEl, false, cur);
 		}
-	}
-
-	// ---------- uncategorized notice ----------
-
-	renderUncatNotice(): void {
-		if (!this.uncatEl) return;
-		const t = (k: string): string => this.plugin.t(k);
-		const n = this.plugin.settings.mappings.filter((m) => m.category == null).length;
-		this.uncatEl.empty();
-		if (n === 0) {
-			this.uncatEl.toggleClass('is-hidden', true);
-			return;
-		}
-		this.uncatEl.toggleClass('is-hidden', false);
-		this.uncatEl.createEl('span', { text: t('uncatNotice').replace('%d', String(n)) });
-		const btn = this.uncatEl.createEl('button', { text: t('smartCat'), cls: 'mod-cta' });
-		btn.addEventListener('click', () => this.smartCategorize());
-	}
-
-	private smartCategorize(): void {
-		const r = this.plugin.categorizeSmart();
-		void this.plugin.save();
-		new Notice(
-			this.plugin
-				.t('smartCatDone')
-				.replace('%d', String(r.done))
-				.replace('%t', String(r.remain))
-		);
-		this.renderUncatNotice();
-		this.renderTable();
 	}
 
 	// ---------- mapping table ----------
@@ -2177,13 +2221,15 @@ class AIAliasSettingTab extends PluginSettingTab {
 		this.addOpen = forceClose ? false : !this.addOpen;
 		this.addFormEl.toggleClass('is-hidden', !this.addOpen);
 		this.addHintEl.setText('');
+		this.codeTouched = false;
 		if (this.addOpen) {
 			this.addRealEl.focus();
+			this.addCodeEl.value = '';
 			this.updateAutoPreview();
 		} else {
 			this.addRealEl.value = '';
 			this.addCodeEl.value = '';
-			this.addCatEl.value = this.plugin.settings.categories[0]?.id ?? FILTER_UNCAT;
+			this.addCatEl.value = this.plugin.settings.categories[0]?.id ?? '';
 			this.updateAutoPreview();
 		}
 	}
@@ -2192,11 +2238,13 @@ class AIAliasSettingTab extends PluginSettingTab {
 		const t = (k: string): string => this.plugin.t(k);
 		const cat = this.plugin.categoryById(this.addCatEl.value);
 		const codeVal = this.addCodeEl.value.trim();
-		if (cat && !codeVal) {
+		if (cat && !this.codeTouched) {
+			// Auto-fill the code field with the next generated code
+			// (kept in sync with the selected category until the user edits it).
 			const preview = cat.prefix + String(cat.seq + 1).padStart(3, '0');
-			this.addHintEl.setText(t('autoPreview').replace('%c', this.plugin.wrap(preview)));
-			this.addHintEl.className = 'ai-hint';
-		} else if (codeVal) {
+			this.addCodeEl.value = preview;
+			this.addHintEl.setText('');
+		} else if (this.codeTouched) {
 			this.addHintEl.setText('');
 		} else {
 			this.addHintEl.setText(t('needCat'));
@@ -2247,17 +2295,21 @@ class AIAliasSettingTab extends PluginSettingTab {
 		const pages = Math.max(1, Math.ceil(list.length / PAGE));
 		if (this.page >= pages) this.page = pages - 1;
 		if (this.page < 0) this.page = 0;
-		this.countEl.setText(`共 ${this.plugin.settings.mappings.length} 条 · 显示 ${list.length} 条`);
 
 		const table = tableEl.createEl('table', { cls: 'ai-alias-tbl' });
 		const thead = table.createEl('thead');
 		const htr = thead.createEl('tr');
-		htr.createEl('th', { cls: 'ai-col-cb' });
-		const thReal = htr.createEl('th', { text: t('thReal') + this.sortIndicator('real'), cls: 'ai-sortable' });
-		thReal.addEventListener('click', () => this.toggleSort('real'));
+		const cbTh = htr.createEl('th', { cls: 'ai-col-cb' });
+		const selAll = cbTh.createEl('input', { type: 'checkbox', cls: 'ai-cbx' });
+		selAll.addEventListener('change', () => {
+			const pageItems = list.slice(this.page * PAGE, this.page * PAGE + PAGE);
+			if (selAll.checked) pageItems.forEach((m) => this.selected.add(m.i));
+			else pageItems.forEach((m) => this.selected.delete(m.i));
+			this.renderTable();
+		});
+		htr.createEl('th', { text: t('thReal') });
+		htr.createEl('th', { text: t('thCode'), cls: 'ai-col-code' });
 		htr.createEl('th', { text: t('thCat'), cls: 'ai-col-cat' });
-		const thCode = htr.createEl('th', { text: t('thCode') + this.sortIndicator('code'), cls: 'ai-sortable' });
-		thCode.addEventListener('click', () => this.toggleSort('code'));
 		htr.createEl('th', { text: t('actions'), cls: 'ai-col-act' });
 
 		const tbody = table.createEl('tbody');
@@ -2266,7 +2318,7 @@ class AIAliasSettingTab extends PluginSettingTab {
 			const td = tr.createEl('td', { text: t('empty') });
 			td.setAttribute('colspan', '5');
 			td.addClass('ai-empty');
-			this.renderPager(pages);
+			this.renderPager(this.plugin.settings.mappings.length, pages);
 			return;
 		}
 		const start = this.page * PAGE;
@@ -2276,39 +2328,34 @@ class AIAliasSettingTab extends PluginSettingTab {
 			const td = tr.createEl('td', { text: t('filteredEmpty') });
 			td.setAttribute('colspan', '5');
 			td.addClass('ai-empty');
-			this.renderPager(pages);
+			this.renderPager(this.plugin.settings.mappings.length, pages);
 			return;
 		}
 		for (const m of items) {
 			const tr = tbody.createEl('tr');
 			if (this.selected.has(m.i)) tr.addClass('ai-sel');
 			const tdCb = tr.createEl('td', { cls: 'ai-col-cb' });
-			const cb = tdCb.createEl('input', { type: 'checkbox' });
+			const cb = tdCb.createEl('input', { type: 'checkbox', cls: 'ai-cbx' });
 			cb.checked = this.selected.has(m.i);
 			cb.addEventListener('change', (e) => {
 				const checked = (e.target as HTMLInputElement).checked;
 				if (checked) this.selected.add(m.i);
 				else this.selected.delete(m.i);
 				tr.toggleClass('ai-sel', checked);
-				this.updateBulk();
 			});
 			if (this.editing === m.i) {
 				const tdReal = tr.createEl('td', { cls: 'ai-col-real' });
 				const inR = tdReal.createEl('input', { type: 'text', cls: 'ai-mreal-edit', value: m.real });
-				const tdCat = tr.createEl('td', { cls: 'ai-col-cat' });
-				const sel = tdCat.createEl('select', { cls: 'ai-cat-sel' });
-				this.fillCatSelect(sel, true, m.category || FILTER_UNCAT);
 				const tdCode = tr.createEl('td', { cls: 'ai-col-code' });
 				const fullCodeE = this.plugin.wrap(m.code);
 				tdCode.createEl('code', { text: fullCodeE, cls: 'ai-mcode', title: fullCodeE });
+				const tdCat = tr.createEl('td', { cls: 'ai-col-cat' });
+				const sel = tdCat.createEl('select', { cls: 'ai-cat-sel' });
+				this.fillCatSelect(sel, false, m.category || '');
 				const tdAct = tr.createEl('td', { cls: 'ai-col-act' });
-				const saveBtn = tdAct.createEl('button', { cls: 'ai-icn' });
-				setIcon(saveBtn, 'check');
-				saveBtn.setAttribute('aria-label', t('save'));
+				const saveBtn = tdAct.createEl('button', { cls: 'ai-act ai-act-edit', text: t('addSave') });
 				saveBtn.addEventListener('click', () => this.saveEdit(m.i, inR.value, sel.value));
-				const cancelBtn = tdAct.createEl('button', { cls: 'ai-icn' });
-				setIcon(cancelBtn, 'x');
-				cancelBtn.setAttribute('aria-label', t('cancel'));
+				const cancelBtn = tdAct.createEl('button', { cls: 'ai-act ai-act-cancel', text: t('cancel') });
 				cancelBtn.addEventListener('click', () => {
 					this.editing = null;
 					this.renderTable();
@@ -2316,40 +2363,48 @@ class AIAliasSettingTab extends PluginSettingTab {
 			} else {
 				const tdReal = tr.createEl('td', { cls: 'ai-col-real', text: m.real });
 				tdReal.setAttribute('title', m.real);
-				const tdCat = tr.createEl('td', { cls: 'ai-col-cat' });
-				const cat = this.plugin.categoryById(m.category);
-				tdCat.createEl('span', {
-					text: cat ? cat.name : t('noCat'),
-					cls: 'ai-pill ' + this.pillClass(cat)
-				});
 				const tdCode = tr.createEl('td', { cls: 'ai-col-code' });
 				const fullCode = this.plugin.wrap(m.code);
 				tdCode.createEl('code', { text: fullCode, cls: 'ai-mcode', title: fullCode });
+				const tdCat = tr.createEl('td', { cls: 'ai-col-cat' });
+				const cat = this.plugin.categoryById(m.category);
+				tdCat.createEl('span', {
+					text: cat ? cat.name : '—',
+					cls: 'ai-pill ' + this.pillClass(cat)
+				});
 				const tdAct = tr.createEl('td', { cls: 'ai-col-act' });
-				const editBtn = tdAct.createEl('button', { cls: 'ai-icn' });
-				setIcon(editBtn, 'pencil');
-				editBtn.setAttribute('aria-label', t('edit'));
+				const editBtn = tdAct.createEl('button', { cls: 'ai-act ai-act-edit', text: t('edit') });
 				editBtn.addEventListener('click', () => {
 					this.editing = m.i;
 					this.selected.clear();
 					this.renderTable();
 				});
-				const delBtn = tdAct.createEl('button', { cls: 'ai-icn ai-icn-del' });
-				setIcon(delBtn, 'trash');
-				delBtn.setAttribute('aria-label', t('del'));
+				const delBtn = tdAct.createEl('button', { cls: 'ai-act ai-act-del', text: t('del') });
 				delBtn.addEventListener('click', () => this.deleteOne(m.i));
 			}
 		}
-		this.renderPager(pages);
+		selAll.checked = items.length > 0 && items.every((m) => this.selected.has(m.i));
+		this.renderPager(this.plugin.settings.mappings.length, pages);
 	}
 
-	private pillClass(cat: { prefix?: string } | null | undefined): string {
+	private pillClass(cat: { id?: string; prefix?: string; key?: string } | null | undefined): string {
 		if (!cat) return 'ai-pill-gray';
-		const prefix = (cat.prefix || '').toUpperCase();
-		if (prefix.includes('PLATFORM')) return 'ai-pill-blue';
-		if (prefix.includes('DEPT') || prefix.includes('LEVEL') || prefix.includes('DEPARTMENT')) return 'ai-pill-green';
-		if (prefix.includes('RESOURCE')) return 'ai-pill-purple';
-		return 'ai-pill-gray';
+		// Preset semantic categories keep their fixed prototype colours.
+		if (cat.key) {
+			const prefix = (cat.prefix || '').toUpperCase();
+			if (prefix.includes('PLATFORM')) return 'ai-pill-blue';
+			if (prefix.includes('RESOURCE')) return 'ai-pill-green';
+			if (prefix.includes('PERSON')) return 'ai-pill-orange';
+			if (prefix.includes('PLACE')) return 'ai-pill-pink';
+			if (prefix.includes('DEPT') || prefix.includes('LEVEL') || prefix.includes('DEPARTMENT')) return 'ai-pill-purple';
+			return 'ai-pill-gray';
+		}
+		// Custom categories: assign from a 20-colour palette by creation order,
+		// each distinct within 20, then cycling through the same palette.
+		const customs = this.plugin.settings.categories.filter((c) => !c.key);
+		let idx = customs.findIndex((c) => c.id === cat.id);
+		if (idx < 0) idx = customs.length;
+		return 'ai-pill-c' + (idx % 20);
 	}
 
 	private sortIndicator(key: 'real' | 'code'): string {
@@ -2357,36 +2412,26 @@ class AIAliasSettingTab extends PluginSettingTab {
 		return this.sortDir > 0 ? ' ▲' : ' ▼';
 	}
 
-	private renderPager(pages: number): void {
+	private renderPager(total: number, pages: number): void {
 		const t = (k: string): string => this.plugin.t(k);
 		this.pagerEl.empty();
-		if (pages <= 1) return;
-		const prev = this.pagerEl.createEl('button', { text: t('pagerPrev') });
+		this.pagerEl.createEl('span', { cls: 'ai-pager-text', text: `共 ${total} 条 · 第 ${this.page + 1} / ${pages} 页` });
+		const prev = this.pagerEl.createEl('button', { text: '‹' });
+		prev.disabled = this.page <= 0;
 		prev.addEventListener('click', () => {
 			if (this.page > 0) {
 				this.page--;
 				this.renderTable();
 			}
 		});
-		for (let i = 0; i < pages; i++) {
-			const b = this.pagerEl.createEl('button', { text: String(i + 1) });
-			if (i === this.page) b.addClass('mod-cta');
-			b.addEventListener('click', () => {
-				this.page = i;
-				this.renderTable();
-			});
-		}
-		const next = this.pagerEl.createEl('button', { text: t('pagerNext') });
+		const next = this.pagerEl.createEl('button', { text: '›' });
+		next.disabled = this.page >= pages - 1;
 		next.addEventListener('click', () => {
 			if (this.page < pages - 1) {
 				this.page++;
 				this.renderTable();
 			}
 		});
-	}
-
-	private updateBulk(): void {
-		if (this.delSelBtn) this.delSelBtn.setText(this.plugin.t('delSel') + ' (' + this.selected.size + ')');
 	}
 
 	private toggleSort(k: 'real' | 'code'): void {
@@ -2421,7 +2466,7 @@ class AIAliasSettingTab extends PluginSettingTab {
 				this.hint(t('errDup'));
 				return;
 			}
-			this.plugin.settings.mappings.push({ real, code: codeVal, category: this.normCat(catId), manual: true });
+			this.plugin.settings.mappings.push({ real, code: codeVal, category: this.normCat(catId), manual: this.codeTouched });
 			void this.plugin.save();
 			this.afterAdd(codeVal);
 		} else {
@@ -2441,10 +2486,10 @@ class AIAliasSettingTab extends PluginSettingTab {
 		new Notice(this.plugin.t('added') + this.plugin.wrap(code));
 		this.addRealEl.value = '';
 		this.addCodeEl.value = '';
-		this.addCatEl.value = this.plugin.settings.categories[0]?.id ?? FILTER_UNCAT;
+		this.addCatEl.value = this.plugin.settings.categories[0]?.id ?? '';
+		this.codeTouched = false;
 		this.updateAutoPreview();
 		this.renderTable();
-		this.renderUncatNotice();
 	}
 
 	private saveEdit(i: number, realRaw: string, catId: string): void {
@@ -2478,50 +2523,6 @@ class AIAliasSettingTab extends PluginSettingTab {
 		void this.plugin.save();
 		new Notice(this.plugin.t('delOne'));
 		this.renderTable();
-		this.renderUncatNotice();
-	}
-
-	private deleteSelected(): void {
-		if (this.selected.size === 0) {
-			new Notice(this.plugin.t('cancelClear'));
-			return;
-		}
-		const n = this.selected.size;
-		new ConfirmDialog(
-			this.app,
-			this.plugin.t('confirmDelSel').replace('%d', String(n)),
-			this.plugin.t('delSel'),
-			this.plugin.t('cancel'),
-			() => {
-				const idxs = [...this.selected].sort((a, b) => b - a);
-				idxs.forEach((i) => this.plugin.settings.mappings.splice(i, 1));
-				this.selected.clear();
-				void this.plugin.save();
-				new Notice(this.plugin.t('delN').replace('%d', String(n)));
-				this.renderTable();
-				this.renderUncatNotice();
-			}
-		).open();
-	}
-
-	private clearAll(): void {
-		if (this.plugin.settings.mappings.length === 0) return;
-		const n = this.plugin.settings.mappings.length;
-		new ConfirmDialog(
-			this.app,
-			this.plugin.t('confirmClear').replace('%d', String(n)),
-			this.plugin.t('clearAll'),
-			this.plugin.t('cancel'),
-			() => {
-				this.plugin.settings.mappings = [];
-				this.selected.clear();
-				this.editing = null;
-				void this.plugin.save();
-				new Notice(this.plugin.t('delN').replace('%d', String(n)));
-				this.renderTable();
-				this.renderUncatNotice();
-			}
-		).open();
 	}
 }
 
@@ -2628,7 +2629,6 @@ export default class AIAliasPlugin extends Plugin {
 		await this.loadSettings();
 		this.settingsTab = new AIAliasSettingTab(this.app, this);
 		this.addSettingTab(this.settingsTab);
-		this.addRibbonIcon('table', this.t('cmdOpenMappings'), () => new MappingTableModal(this.app, this).open());
 		this.registerCommands();
 
 		this.registerEvent(
