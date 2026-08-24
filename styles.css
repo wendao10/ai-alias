@@ -243,50 +243,51 @@
 	background: var(--background-modifier-border);
 	color: var(--text-muted);
 }
-/* Category badges are <button>: force colours through Obsidian button defaults. */
-.ai-cat-badge.ai-pill-blue {
-	background: rgba(108, 156, 255, 0.16) !important;
-	color: #6c9cff !important;
+/* Category badges are <button>: scope under .ai-cat-badges (specificity 0,3,0)
+   so the colours outrank Obsidian's button defaults without !important. */
+.ai-cat-badges .ai-cat-badge.ai-pill-blue {
+	background: rgba(108, 156, 255, 0.16);
+	color: #6c9cff;
 }
-.theme-dark .ai-cat-badge.ai-pill-blue {
-	background: rgba(108, 156, 255, 0.22) !important;
-	color: #9bbcff !important;
+.theme-dark .ai-cat-badges .ai-cat-badge.ai-pill-blue {
+	background: rgba(108, 156, 255, 0.22);
+	color: #9bbcff;
 }
-.ai-cat-badge.ai-pill-green {
-	background: rgba(76, 201, 160, 0.16) !important;
-	color: #4cc9a0 !important;
+.ai-cat-badges .ai-cat-badge.ai-pill-green {
+	background: rgba(76, 201, 160, 0.16);
+	color: #4cc9a0;
 }
-.theme-dark .ai-cat-badge.ai-pill-green {
-	background: rgba(76, 201, 160, 0.22) !important;
-	color: #7de0c2 !important;
+.theme-dark .ai-cat-badges .ai-cat-badge.ai-pill-green {
+	background: rgba(76, 201, 160, 0.22);
+	color: #7de0c2;
 }
-.ai-cat-badge.ai-pill-purple {
-	background: rgba(139, 92, 246, 0.16) !important;
-	color: #8b5cf6 !important;
+.ai-cat-badges .ai-cat-badge.ai-pill-purple {
+	background: rgba(139, 92, 246, 0.16);
+	color: #8b5cf6;
 }
-.theme-dark .ai-cat-badge.ai-pill-purple {
-	background: rgba(139, 92, 246, 0.22) !important;
-	color: #b49bfa !important;
+.theme-dark .ai-cat-badges .ai-cat-badge.ai-pill-purple {
+	background: rgba(139, 92, 246, 0.22);
+	color: #b49bfa;
 }
-.ai-cat-badge.ai-pill-orange {
-	background: rgba(240, 168, 90, 0.16) !important;
-	color: #f0a85a !important;
+.ai-cat-badges .ai-cat-badge.ai-pill-orange {
+	background: rgba(240, 168, 90, 0.16);
+	color: #f0a85a;
 }
-.theme-dark .ai-cat-badge.ai-pill-orange {
-	background: rgba(240, 168, 90, 0.22) !important;
-	color: #f5c48a !important;
+.theme-dark .ai-cat-badges .ai-cat-badge.ai-pill-orange {
+	background: rgba(240, 168, 90, 0.22);
+	color: #f5c48a;
 }
-.ai-cat-badge.ai-pill-pink {
-	background: rgba(224, 108, 159, 0.16) !important;
-	color: #e06c9f !important;
+.ai-cat-badges .ai-cat-badge.ai-pill-pink {
+	background: rgba(224, 108, 159, 0.16);
+	color: #e06c9f;
 }
-.theme-dark .ai-cat-badge.ai-pill-pink {
-	background: rgba(224, 108, 159, 0.22) !important;
-	color: #ea9fbc !important;
+.theme-dark .ai-cat-badges .ai-cat-badge.ai-pill-pink {
+	background: rgba(224, 108, 159, 0.22);
+	color: #ea9fbc;
 }
-.ai-cat-badge.ai-pill-gray {
-	background: var(--background-modifier-border) !important;
-	color: var(--text-muted) !important;
+.ai-cat-badges .ai-cat-badge.ai-pill-gray {
+	background: var(--background-modifier-border);
+	color: var(--text-muted);
 }
 /* icon action buttons (edit / delete) */
 .ai-icn {
@@ -1097,11 +1098,6 @@
 	margin: 0 !important;
 	max-width: 100% !important;
 }
-/* Upgrade notice for Obsidian < 1.13.0 */
-.ai-upgrade { padding: 28px 24px; max-width: 680px; }
-.ai-upgrade h1 { margin: 0 0 12px; color: var(--text-error); font-size: 20px; }
-.ai-upgrade-msg { margin: 0 0 10px; line-height: 1.7; color: var(--text-normal); }
-.ai-upgrade-hint { margin: 0; line-height: 1.6; color: var(--text-muted); font-size: 0.9em; }
 /* When the custom UI is rendered inside a declarative setting-item row (1.13.0+),
    strip the default row layout so the page fills cleanly. */
 .setting-item.ai-settings-v2 { display: block; padding: 0; border-top: none; }
@@ -1513,24 +1509,24 @@
 .ai-pill-c17 { color: var(--ai-c17-text); background: var(--ai-c17-bg); }
 .ai-pill-c18 { color: var(--ai-c18-text); background: var(--ai-c18-bg); }
 .ai-pill-c19 { color: var(--ai-c19-text); background: var(--ai-c19-bg); }
-.ai-cat-badge.ai-pill-c0 { color: var(--ai-c0-text) !important; background: var(--ai-c0-bg) !important; }
-.ai-cat-badge.ai-pill-c1 { color: var(--ai-c1-text) !important; background: var(--ai-c1-bg) !important; }
-.ai-cat-badge.ai-pill-c2 { color: var(--ai-c2-text) !important; background: var(--ai-c2-bg) !important; }
-.ai-cat-badge.ai-pill-c3 { color: var(--ai-c3-text) !important; background: var(--ai-c3-bg) !important; }
-.ai-cat-badge.ai-pill-c4 { color: var(--ai-c4-text) !important; background: var(--ai-c4-bg) !important; }
-.ai-cat-badge.ai-pill-c5 { color: var(--ai-c5-text) !important; background: var(--ai-c5-bg) !important; }
-.ai-cat-badge.ai-pill-c6 { color: var(--ai-c6-text) !important; background: var(--ai-c6-bg) !important; }
-.ai-cat-badge.ai-pill-c7 { color: var(--ai-c7-text) !important; background: var(--ai-c7-bg) !important; }
-.ai-cat-badge.ai-pill-c8 { color: var(--ai-c8-text) !important; background: var(--ai-c8-bg) !important; }
-.ai-cat-badge.ai-pill-c9 { color: var(--ai-c9-text) !important; background: var(--ai-c9-bg) !important; }
-.ai-cat-badge.ai-pill-c10 { color: var(--ai-c10-text) !important; background: var(--ai-c10-bg) !important; }
-.ai-cat-badge.ai-pill-c11 { color: var(--ai-c11-text) !important; background: var(--ai-c11-bg) !important; }
-.ai-cat-badge.ai-pill-c12 { color: var(--ai-c12-text) !important; background: var(--ai-c12-bg) !important; }
-.ai-cat-badge.ai-pill-c13 { color: var(--ai-c13-text) !important; background: var(--ai-c13-bg) !important; }
-.ai-cat-badge.ai-pill-c14 { color: var(--ai-c14-text) !important; background: var(--ai-c14-bg) !important; }
-.ai-cat-badge.ai-pill-c15 { color: var(--ai-c15-text) !important; background: var(--ai-c15-bg) !important; }
-.ai-cat-badge.ai-pill-c16 { color: var(--ai-c16-text) !important; background: var(--ai-c16-bg) !important; }
-.ai-cat-badge.ai-pill-c17 { color: var(--ai-c17-text) !important; background: var(--ai-c17-bg) !important; }
-.ai-cat-badge.ai-pill-c18 { color: var(--ai-c18-text) !important; background: var(--ai-c18-bg) !important; }
-.ai-cat-badge.ai-pill-c19 { color: var(--ai-c19-text) !important; background: var(--ai-c19-bg) !important; }
+.ai-cat-badges .ai-cat-badge.ai-pill-c0 { color: var(--ai-c0-text); background: var(--ai-c0-bg); }
+.ai-cat-badges .ai-cat-badge.ai-pill-c1 { color: var(--ai-c1-text); background: var(--ai-c1-bg); }
+.ai-cat-badges .ai-cat-badge.ai-pill-c2 { color: var(--ai-c2-text); background: var(--ai-c2-bg); }
+.ai-cat-badges .ai-cat-badge.ai-pill-c3 { color: var(--ai-c3-text); background: var(--ai-c3-bg); }
+.ai-cat-badges .ai-cat-badge.ai-pill-c4 { color: var(--ai-c4-text); background: var(--ai-c4-bg); }
+.ai-cat-badges .ai-cat-badge.ai-pill-c5 { color: var(--ai-c5-text); background: var(--ai-c5-bg); }
+.ai-cat-badges .ai-cat-badge.ai-pill-c6 { color: var(--ai-c6-text); background: var(--ai-c6-bg); }
+.ai-cat-badges .ai-cat-badge.ai-pill-c7 { color: var(--ai-c7-text); background: var(--ai-c7-bg); }
+.ai-cat-badges .ai-cat-badge.ai-pill-c8 { color: var(--ai-c8-text); background: var(--ai-c8-bg); }
+.ai-cat-badges .ai-cat-badge.ai-pill-c9 { color: var(--ai-c9-text); background: var(--ai-c9-bg); }
+.ai-cat-badges .ai-cat-badge.ai-pill-c10 { color: var(--ai-c10-text); background: var(--ai-c10-bg); }
+.ai-cat-badges .ai-cat-badge.ai-pill-c11 { color: var(--ai-c11-text); background: var(--ai-c11-bg); }
+.ai-cat-badges .ai-cat-badge.ai-pill-c12 { color: var(--ai-c12-text); background: var(--ai-c12-bg); }
+.ai-cat-badges .ai-cat-badge.ai-pill-c13 { color: var(--ai-c13-text); background: var(--ai-c13-bg); }
+.ai-cat-badges .ai-cat-badge.ai-pill-c14 { color: var(--ai-c14-text); background: var(--ai-c14-bg); }
+.ai-cat-badges .ai-cat-badge.ai-pill-c15 { color: var(--ai-c15-text); background: var(--ai-c15-bg); }
+.ai-cat-badges .ai-cat-badge.ai-pill-c16 { color: var(--ai-c16-text); background: var(--ai-c16-bg); }
+.ai-cat-badges .ai-cat-badge.ai-pill-c17 { color: var(--ai-c17-text); background: var(--ai-c17-bg); }
+.ai-cat-badges .ai-cat-badge.ai-pill-c18 { color: var(--ai-c18-text); background: var(--ai-c18-bg); }
+.ai-cat-badges .ai-cat-badge.ai-pill-c19 { color: var(--ai-c19-text); background: var(--ai-c19-bg); }
 /* ===== end palette ===== */

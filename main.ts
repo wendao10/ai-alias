@@ -89,24 +89,10 @@ const PRESET_DEFS: PresetDef[] = [
 
 const PAGE = 10;
 
-function versionAtLeast(current: string, target: string): boolean {
-	const c = current.split('.').map((n) => parseInt(n, 10) || 0);
-	const t = target.split('.').map((n) => parseInt(n, 10) || 0);
-	for (let i = 0; i < 3; i++) {
-		const cv = c[i] || 0;
-		const tv = t[i] || 0;
-		if (cv !== tv) return cv > tv;
-	}
-	return true;
-}
-
 const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 	en: {
 		headerTitle: 'AI Alias',
 		headerSub: 'AI Encryption Computing Assistant',
-		upgradeTitle: 'Please update Obsidian',
-		upgradeMsg: 'AI Alias requires Obsidian 1.13.0 or newer. Your current version does not support the new settings interface.',
-		upgradeHint: 'Please update Obsidian to the latest version (1.13.0 or above) via Settings → About → Check for updates.',
 		navGeneral: 'General',
 		navCatMap: 'Categories & mappings',
 		navBatch: 'Batch operations',
@@ -363,9 +349,6 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 	zh: {
 		headerTitle: 'AI Alias 设置',
 		headerSub: 'AI加密计算助手',
-		upgradeTitle: '请更新 Obsidian',
-		upgradeMsg: 'AI Alias 需要 Obsidian 1.13.0 或更高版本。你当前的 Obsidian 版本不支持新的设置界面。',
-		upgradeHint: '请在「设置 → 关于 → 检查更新」中将 Obsidian 更新至最新版本（1.13.0 及以上）。',
 		navGeneral: '通用',
 		navCatMap: '分类与映射',
 		navBatch: '批量操作',
@@ -1159,7 +1142,7 @@ class ImportModal extends Modal {
 			const headText = t('importPreviewHead') || '%v \u6761\u6709\u6548 \u00b7 %s \u6761\u91cd\u590d\u5df2\u8df3\u8fc7';
 			this.previewHeader.setText(headText.replace('%v', String(valid.length)).replace('%s', String(skipped.length)));
 		}
-		const body = this.previewEl.querySelector('.ai-import-previewbody') as HTMLElement | null;
+		const body = this.previewEl.querySelector('.ai-import-previewbody');
 		if (body) {
 			body.empty();
 			for (const v of valid) {
@@ -1226,7 +1209,7 @@ class MappingTableModal extends Modal {
 	onOpen(): void {
 		const { contentEl } = this;
 		contentEl.empty();
-		const modalRoot = contentEl.closest('.modal') as HTMLElement | null;
+		const modalRoot = contentEl.closest('.modal');
 		if (modalRoot) modalRoot.addClass('ai-mapping-modal');
 		const t = (k: string): string => this.plugin.t(k);
 		this.titleEl.setText(t('mappingTitle'));
@@ -1726,7 +1709,7 @@ class BatchPreviewModal extends Modal {
 		const totalScans = this.scans.length;
 		const infoText = (t('bpInfoBarFmt') || '\u64cd\u4f5c\u5c06\u4fee\u6539 %d \u4e2a\u6587\u4ef6\uff0c\u5df2\u81ea\u52a8\u521b\u5efa\u5feb\u7167\uff0c\u53ef\u968f\u65f6\u64a4\u9500\u3002').replace('%d', String(files));
 		if (this.infoEl) this.infoEl.setText(infoText);
-		const selLabel = this.modalEl.querySelector('.ai-bpfoodsel') as HTMLElement | null;
+		const selLabel = this.modalEl.querySelector('.ai-bpfoodsel');
 		if (selLabel) selLabel.setText((t('bpSelected') || '\u5df2\u9009 %d / %d \u4e2a\u6587\u4ef6').replace('%d', String(selTotal)).replace('%d', String(totalScans)));
 		const runLabel = this.direction === 'encrypt'
 			? (t('bpRunEnc') || '\u6267\u884c\u52a0\u5bc6\uff08%d \u7bc7\uff09')
@@ -2092,30 +2075,8 @@ class AIAliasSettingTab extends PluginSettingTab {
 		];
 	}
 
-	display(): void {
-		const { containerEl } = this;
-		containerEl.empty();
-		const appVersion = (this.app as unknown as { version: string }).version;
-		if (versionAtLeast(appVersion, '1.13.0')) {
-			containerEl.addClass('ai-settings-v2');
-			this.renderContent(containerEl);
-		} else {
-			this.renderUpgradeNotice(containerEl);
-		}
-	}
-
 	private refreshSettings(): void {
-		const tab = this as unknown as { update?: () => void };
-		if (typeof tab.update === 'function') tab.update();
-		else this.display();
-	}
-
-	private renderUpgradeNotice(container: HTMLElement): void {
-		const t = (k: string): string => this.plugin.t(k);
-		const wrap = container.createDiv('ai-upgrade');
-		wrap.createEl('h1', { text: t('upgradeTitle') });
-		wrap.createEl('p', { text: t('upgradeMsg'), cls: 'ai-upgrade-msg' });
-		wrap.createEl('p', { text: t('upgradeHint'), cls: 'ai-upgrade-hint' });
+		this.update();
 	}
 
 	private exportMappings(): void {

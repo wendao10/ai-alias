@@ -57,23 +57,10 @@ var PRESET_DEFS = [
   { key: "dept2", en: "Department L2", zh: "\u90E8\u95E8(\u4E8C\u7EA7)", prefix: "DEPT2" }
 ];
 var PAGE = 10;
-function versionAtLeast(current, target) {
-  const c = current.split(".").map((n) => parseInt(n, 10) || 0);
-  const t = target.split(".").map((n) => parseInt(n, 10) || 0);
-  for (let i = 0; i < 3; i++) {
-    const cv = c[i] || 0;
-    const tv = t[i] || 0;
-    if (cv !== tv) return cv > tv;
-  }
-  return true;
-}
 var STR = {
   en: {
     headerTitle: "AI Alias",
     headerSub: "AI Encryption Computing Assistant",
-    upgradeTitle: "Please update Obsidian",
-    upgradeMsg: "AI Alias requires Obsidian 1.13.0 or newer. Your current version does not support the new settings interface.",
-    upgradeHint: "Please update Obsidian to the latest version (1.13.0 or above) via Settings \u2192 About \u2192 Check for updates.",
     navGeneral: "General",
     navCatMap: "Categories & mappings",
     navBatch: "Batch operations",
@@ -327,9 +314,6 @@ var STR = {
   zh: {
     headerTitle: "AI Alias \u8BBE\u7F6E",
     headerSub: "AI\u52A0\u5BC6\u8BA1\u7B97\u52A9\u624B",
-    upgradeTitle: "\u8BF7\u66F4\u65B0 Obsidian",
-    upgradeMsg: "AI Alias \u9700\u8981 Obsidian 1.13.0 \u6216\u66F4\u9AD8\u7248\u672C\u3002\u4F60\u5F53\u524D\u7684 Obsidian \u7248\u672C\u4E0D\u652F\u6301\u65B0\u7684\u8BBE\u7F6E\u754C\u9762\u3002",
-    upgradeHint: "\u8BF7\u5728\u300C\u8BBE\u7F6E \u2192 \u5173\u4E8E \u2192 \u68C0\u67E5\u66F4\u65B0\u300D\u4E2D\u5C06 Obsidian \u66F4\u65B0\u81F3\u6700\u65B0\u7248\u672C\uFF081.13.0 \u53CA\u4EE5\u4E0A\uFF09\u3002",
     navGeneral: "\u901A\u7528",
     navCatMap: "\u5206\u7C7B\u4E0E\u6620\u5C04",
     navBatch: "\u6279\u91CF\u64CD\u4F5C",
@@ -1763,28 +1747,8 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
       }
     ];
   }
-  display() {
-    const { containerEl } = this;
-    containerEl.empty();
-    const appVersion = this.app.version;
-    if (versionAtLeast(appVersion, "1.13.0")) {
-      containerEl.addClass("ai-settings-v2");
-      this.renderContent(containerEl);
-    } else {
-      this.renderUpgradeNotice(containerEl);
-    }
-  }
   refreshSettings() {
-    const tab = this;
-    if (typeof tab.update === "function") tab.update();
-    else this.display();
-  }
-  renderUpgradeNotice(container) {
-    const t = (k) => this.plugin.t(k);
-    const wrap = container.createDiv("ai-upgrade");
-    wrap.createEl("h1", { text: t("upgradeTitle") });
-    wrap.createEl("p", { text: t("upgradeMsg"), cls: "ai-upgrade-msg" });
-    wrap.createEl("p", { text: t("upgradeHint"), cls: "ai-upgrade-hint" });
+    this.update();
   }
   exportMappings() {
     const t = (k) => this.plugin.t(k);
