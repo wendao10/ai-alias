@@ -11,7 +11,7 @@ import {
 	TAbstractFile,
 	Menu,
 	Vault,
-	setIcon
+	SettingDefinitionItem
 } from 'obsidian';
 
 interface Category {
@@ -89,10 +89,24 @@ const PRESET_DEFS: PresetDef[] = [
 
 const PAGE = 10;
 
+function versionAtLeast(current: string, target: string): boolean {
+	const c = current.split('.').map((n) => parseInt(n, 10) || 0);
+	const t = target.split('.').map((n) => parseInt(n, 10) || 0);
+	for (let i = 0; i < 3; i++) {
+		const cv = c[i] || 0;
+		const tv = t[i] || 0;
+		if (cv !== tv) return cv > tv;
+	}
+	return true;
+}
+
 const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 	en: {
 		headerTitle: 'AI Alias',
 		headerSub: 'AI Encryption Computing Assistant',
+		upgradeTitle: 'Please update Obsidian',
+		upgradeMsg: 'AI Alias requires Obsidian 1.13.0 or newer. Your current version does not support the new settings interface.',
+		upgradeHint: 'Please update Obsidian to the latest version (1.13.0 or above) via Settings → About → Check for updates.',
 		navGeneral: 'General',
 		navCatMap: 'Categories & mappings',
 		navBatch: 'Batch operations',
@@ -349,6 +363,9 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 	zh: {
 		headerTitle: 'AI Alias 设置',
 		headerSub: 'AI加密计算助手',
+		upgradeTitle: '请更新 Obsidian',
+		upgradeMsg: 'AI Alias 需要 Obsidian 1.13.0 或更高版本。你当前的 Obsidian 版本不支持新的设置界面。',
+		upgradeHint: '请在「设置 → 关于 → 检查更新」中将 Obsidian 更新至最新版本（1.13.0 及以上）。',
 		navGeneral: '通用',
 		navCatMap: '分类与映射',
 		navBatch: '批量操作',
@@ -1078,40 +1095,48 @@ class ImportModal extends Modal {
 			return null;
 		}
 		if (obj == null || typeof obj !== 'object') return null;
-		let arr: any[] | null = null;
+		type RawMapping = { real?: unknown; code?: unknown; category?: unknown; manual?: unknown };
+		let arr: unknown[] | null = null;
 		if (Array.isArray(obj)) {
-			arr = obj as any[];
-		} else if (Array.isArray((obj as any).mappings)) {
-			arr = (obj as any).mappings as any[];
+			arr = obj as unknown[];
 		} else {
-			return null;
+			const rec = obj as Record<string, unknown>;
+			if (Array.isArray(rec.mappings)) {
+				arr = rec.mappings as unknown[];
+			} else {
+				return null;
+			}
 		}
 		const cats: Category[] | null =
-			!Array.isArray(obj) && Array.isArray((obj as any).categories) ? ((obj as any).categories as Category[]) : null;
+			!Array.isArray(obj) && Array.isArray((obj as Record<string, unknown>).categories)
+				? ((obj as Record<string, unknown>).categories as Category[])
+				: null;
 		const norm = (v: string | null): string | null =>
 			v === FILTER_UNCAT || v === FILTER_ALL || !v ? null : v;
 		const mappings: { real: string; code: string; category: string | null; manual: boolean }[] = [];
 		for (const it of arr) {
 			if (it == null || typeof it !== 'object') {
 				if (Array.isArray(it) && it.length >= 2) {
-					const real = String(it[0]).trim();
-					const code = String(it[1]).trim().toUpperCase();
+					const parts = it as unknown[];
+					const real = String(parts[0]).trim();
+					const code = String(parts[1]).trim().toUpperCase();
 					if (real && code && isValidCode(code)) {
 						mappings.push({ real, code, category: null, manual: true });
 					}
 				}
 				continue;
 			}
-			const real = typeof it.real === 'string' ? it.real.trim() : '';
+			const m = it as RawMapping;
+			const real = typeof m.real === 'string' ? m.real.trim() : '';
 			const codeRaw =
-				typeof it.code === 'string'
-					? it.code.trim().toUpperCase()
-					: typeof it.code === 'number'
-					? String(it.code)
+				typeof m.code === 'string'
+					? m.code.trim().toUpperCase()
+					: typeof m.code === 'number'
+					? String(m.code)
 					: '';
 			if (!real || !codeRaw || !isValidCode(codeRaw)) continue;
-			const catRaw = it.category === undefined || it.category === null ? null : String(it.category);
-			const manual = typeof it.manual === 'boolean' ? it.manual : catRaw === null;
+			const catRaw = m.category === undefined || m.category === null ? null : String(m.category);
+			const manual = typeof m.manual === 'boolean' ? m.manual : catRaw === null;
 			mappings.push({ real, code: codeRaw, category: norm(catRaw), manual });
 		}
 		return { mappings, categories: cats };
@@ -1691,13 +1716,11 @@ class BatchPreviewModal extends Modal {
 	private refresh(): void {
 		const t = (k: string): string => this.plugin.t(k);
 		let files = 0;
-		let n = 0;
 		for (const s of this.scans) {
 			if (!s.selected || !this.hasPotential(s)) continue;
 			const c = this.counts(s);
 			if (c.n === 0) continue;
 			files++;
-			n += c.n;
 		}
 		const selTotal = this.scans.filter((s) => s.selected).length;
 		const totalScans = this.scans.length;
@@ -1918,14 +1941,13 @@ class AIAliasSettingTab extends PluginSettingTab {
 		this.plugin = plugin;
 	}
 
-	display(): void {
+	private renderContent(root: HTMLElement): void {
 		const t = (k: string): string => this.plugin.t(k);
-		const { containerEl } = this;
-		containerEl.empty();
-		containerEl.addClass('ai-settings-v2');
+		root.empty();
+		root.addClass('ai-settings-v2');
 
 		// ===== Header =====
-		const header = containerEl.createDiv('ai-v2-header');
+		const header = root.createDiv('ai-v2-header');
 		const titleGrp = header.createDiv('ai-v2-title');
 		titleGrp.createDiv('ai-v2-h2').setText(t('headerTitle'));
 		titleGrp.createDiv('ai-v2-sub').setText(t('headerSub'));
@@ -1942,16 +1964,16 @@ class AIAliasSettingTab extends PluginSettingTab {
 			this.plugin.settings.language = 'en';
 			void this.plugin.save();
 			syncLang();
-			this.display();
+			this.refreshSettings();
 		});
 		langZh.addEventListener('click', () => {
 			this.plugin.settings.language = 'zh';
 			void this.plugin.save();
 			syncLang();
-			this.display();
+			this.refreshSettings();
 		});
 		// ===== Body (single column) =====
-		const body = containerEl.createDiv('ai-v2-body');
+		const body = root.createDiv('ai-v2-body');
 
 		// ===== Sec_通用 (General) =====
 		const secGeneral = body.createDiv('ai-v2-section');
@@ -1961,7 +1983,7 @@ class AIAliasSettingTab extends PluginSettingTab {
 			dd.addOption('en', 'English').addOption('zh', '中文').setValue(this.plugin.settings.language).onChange(async (v) => {
 				this.plugin.settings.language = v as 'en' | 'zh';
 				await this.plugin.save();
-				this.display();
+				this.refreshSettings();
 			});
 		});
 		new Setting(secGeneral)
@@ -2054,6 +2076,46 @@ class AIAliasSettingTab extends PluginSettingTab {
 		new Setting(secData).setName(t('navData')).setHeading();
 		new Setting(secData).setName(t('exportBtn')).setDesc(t('importExportDesc')).addButton((b) => b.setButtonText(t('exportBtn')).onClick(() => this.exportMappings()));
 		new Setting(secData).setName(t('importBtn')).setDesc(t('importExportDesc')).addButton((b) => b.setButtonText(t('importBtn')).onClick(() => new ImportModal(this.app, this.plugin, this).open()));
+	}
+
+	getSettingDefinitions(): SettingDefinitionItem[] {
+		return [
+			{
+				name: 'AI Alias',
+				render: (setting: Setting) => {
+					const root = setting.settingEl;
+					root.empty();
+					this.renderContent(root);
+					return () => {};
+				}
+			}
+		];
+	}
+
+	display(): void {
+		const { containerEl } = this;
+		containerEl.empty();
+		const appVersion = (this.app as unknown as { version: string }).version;
+		if (versionAtLeast(appVersion, '1.13.0')) {
+			containerEl.addClass('ai-settings-v2');
+			this.renderContent(containerEl);
+		} else {
+			this.renderUpgradeNotice(containerEl);
+		}
+	}
+
+	private refreshSettings(): void {
+		const tab = this as unknown as { update?: () => void };
+		if (typeof tab.update === 'function') tab.update();
+		else this.display();
+	}
+
+	private renderUpgradeNotice(container: HTMLElement): void {
+		const t = (k: string): string => this.plugin.t(k);
+		const wrap = container.createDiv('ai-upgrade');
+		wrap.createEl('h1', { text: t('upgradeTitle') });
+		wrap.createEl('p', { text: t('upgradeMsg'), cls: 'ai-upgrade-msg' });
+		wrap.createEl('p', { text: t('upgradeHint'), cls: 'ai-upgrade-hint' });
 	}
 
 	private exportMappings(): void {
@@ -2237,7 +2299,6 @@ class AIAliasSettingTab extends PluginSettingTab {
 	private updateAutoPreview(): void {
 		const t = (k: string): string => this.plugin.t(k);
 		const cat = this.plugin.categoryById(this.addCatEl.value);
-		const codeVal = this.addCodeEl.value.trim();
 		if (cat && !this.codeTouched) {
 			// Auto-fill the code field with the next generated code
 			// (kept in sync with the selected category until the user edits it).
@@ -2413,7 +2474,6 @@ class AIAliasSettingTab extends PluginSettingTab {
 	}
 
 	private renderPager(total: number, pages: number): void {
-		const t = (k: string): string => this.plugin.t(k);
 		this.pagerEl.empty();
 		this.pagerEl.createEl('span', { cls: 'ai-pager-text', text: `共 ${total} 条 · 第 ${this.page + 1} / ${pages} 页` });
 		const prev = this.pagerEl.createEl('button', { text: '‹' });

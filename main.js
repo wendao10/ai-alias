@@ -57,10 +57,23 @@ var PRESET_DEFS = [
   { key: "dept2", en: "Department L2", zh: "\u90E8\u95E8(\u4E8C\u7EA7)", prefix: "DEPT2" }
 ];
 var PAGE = 10;
+function versionAtLeast(current, target) {
+  const c = current.split(".").map((n) => parseInt(n, 10) || 0);
+  const t = target.split(".").map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i++) {
+    const cv = c[i] || 0;
+    const tv = t[i] || 0;
+    if (cv !== tv) return cv > tv;
+  }
+  return true;
+}
 var STR = {
   en: {
     headerTitle: "AI Alias",
     headerSub: "AI Encryption Computing Assistant",
+    upgradeTitle: "Please update Obsidian",
+    upgradeMsg: "AI Alias requires Obsidian 1.13.0 or newer. Your current version does not support the new settings interface.",
+    upgradeHint: "Please update Obsidian to the latest version (1.13.0 or above) via Settings \u2192 About \u2192 Check for updates.",
     navGeneral: "General",
     navCatMap: "Categories & mappings",
     navBatch: "Batch operations",
@@ -314,6 +327,9 @@ var STR = {
   zh: {
     headerTitle: "AI Alias \u8BBE\u7F6E",
     headerSub: "AI\u52A0\u5BC6\u8BA1\u7B97\u52A9\u624B",
+    upgradeTitle: "\u8BF7\u66F4\u65B0 Obsidian",
+    upgradeMsg: "AI Alias \u9700\u8981 Obsidian 1.13.0 \u6216\u66F4\u9AD8\u7248\u672C\u3002\u4F60\u5F53\u524D\u7684 Obsidian \u7248\u672C\u4E0D\u652F\u6301\u65B0\u7684\u8BBE\u7F6E\u754C\u9762\u3002",
+    upgradeHint: "\u8BF7\u5728\u300C\u8BBE\u7F6E \u2192 \u5173\u4E8E \u2192 \u68C0\u67E5\u66F4\u65B0\u300D\u4E2D\u5C06 Obsidian \u66F4\u65B0\u81F3\u6700\u65B0\u7248\u672C\uFF081.13.0 \u53CA\u4EE5\u4E0A\uFF09\u3002",
     navGeneral: "\u901A\u7528",
     navCatMap: "\u5206\u7C7B\u4E0E\u6620\u5C04",
     navBatch: "\u6279\u91CF\u64CD\u4F5C",
@@ -911,10 +927,13 @@ var ImportModal = class extends import_obsidian.Modal {
     let arr = null;
     if (Array.isArray(obj)) {
       arr = obj;
-    } else if (Array.isArray(obj.mappings)) {
-      arr = obj.mappings;
     } else {
-      return null;
+      const rec = obj;
+      if (Array.isArray(rec.mappings)) {
+        arr = rec.mappings;
+      } else {
+        return null;
+      }
     }
     const cats = !Array.isArray(obj) && Array.isArray(obj.categories) ? obj.categories : null;
     const norm = (v) => v === FILTER_UNCAT || v === FILTER_ALL || !v ? null : v;
@@ -922,19 +941,21 @@ var ImportModal = class extends import_obsidian.Modal {
     for (const it of arr) {
       if (it == null || typeof it !== "object") {
         if (Array.isArray(it) && it.length >= 2) {
-          const real2 = String(it[0]).trim();
-          const code = String(it[1]).trim().toUpperCase();
+          const parts = it;
+          const real2 = String(parts[0]).trim();
+          const code = String(parts[1]).trim().toUpperCase();
           if (real2 && code && isValidCode(code)) {
             mappings.push({ real: real2, code, category: null, manual: true });
           }
         }
         continue;
       }
-      const real = typeof it.real === "string" ? it.real.trim() : "";
-      const codeRaw = typeof it.code === "string" ? it.code.trim().toUpperCase() : typeof it.code === "number" ? String(it.code) : "";
+      const m = it;
+      const real = typeof m.real === "string" ? m.real.trim() : "";
+      const codeRaw = typeof m.code === "string" ? m.code.trim().toUpperCase() : typeof m.code === "number" ? String(m.code) : "";
       if (!real || !codeRaw || !isValidCode(codeRaw)) continue;
-      const catRaw = it.category === void 0 || it.category === null ? null : String(it.category);
-      const manual = typeof it.manual === "boolean" ? it.manual : catRaw === null;
+      const catRaw = m.category === void 0 || m.category === null ? null : String(m.category);
+      const manual = typeof m.manual === "boolean" ? m.manual : catRaw === null;
       mappings.push({ real, code: codeRaw, category: norm(catRaw), manual });
     }
     return { mappings, categories: cats };
@@ -1426,13 +1447,11 @@ var BatchPreviewModal = class extends import_obsidian.Modal {
   refresh() {
     const t = (k) => this.plugin.t(k);
     let files = 0;
-    let n = 0;
     for (const s of this.scans) {
       if (!s.selected || !this.hasPotential(s)) continue;
       const c = this.counts(s);
       if (c.n === 0) continue;
       files++;
-      n += c.n;
     }
     const selTotal = this.scans.filter((s) => s.selected).length;
     const totalScans = this.scans.length;
@@ -1616,12 +1635,11 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     this.filterCat = FILTER_ALL;
     this.plugin = plugin;
   }
-  display() {
+  renderContent(root) {
     const t = (k) => this.plugin.t(k);
-    const { containerEl } = this;
-    containerEl.empty();
-    containerEl.addClass("ai-settings-v2");
-    const header = containerEl.createDiv("ai-v2-header");
+    root.empty();
+    root.addClass("ai-settings-v2");
+    const header = root.createDiv("ai-v2-header");
     const titleGrp = header.createDiv("ai-v2-title");
     titleGrp.createDiv("ai-v2-h2").setText(t("headerTitle"));
     titleGrp.createDiv("ai-v2-sub").setText(t("headerSub"));
@@ -1638,15 +1656,15 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
       this.plugin.settings.language = "en";
       void this.plugin.save();
       syncLang();
-      this.display();
+      this.refreshSettings();
     });
     langZh.addEventListener("click", () => {
       this.plugin.settings.language = "zh";
       void this.plugin.save();
       syncLang();
-      this.display();
+      this.refreshSettings();
     });
-    const body = containerEl.createDiv("ai-v2-body");
+    const body = root.createDiv("ai-v2-body");
     const secGeneral = body.createDiv("ai-v2-section");
     secGeneral.id = "sec-general";
     new import_obsidian.Setting(secGeneral).setName(t("secGeneral")).setHeading();
@@ -1654,7 +1672,7 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
       dd.addOption("en", "English").addOption("zh", "\u4E2D\u6587").setValue(this.plugin.settings.language).onChange(async (v) => {
         this.plugin.settings.language = v;
         await this.plugin.save();
-        this.display();
+        this.refreshSettings();
       });
     });
     new import_obsidian.Setting(secGeneral).setName(t("pasteUnmask")).setDesc(t("pasteUnmaskDesc")).addToggle((tg) => tg.setValue(this.plugin.settings.pasteUnmask).onChange(async (v) => {
@@ -1730,6 +1748,43 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     new import_obsidian.Setting(secData).setName(t("navData")).setHeading();
     new import_obsidian.Setting(secData).setName(t("exportBtn")).setDesc(t("importExportDesc")).addButton((b) => b.setButtonText(t("exportBtn")).onClick(() => this.exportMappings()));
     new import_obsidian.Setting(secData).setName(t("importBtn")).setDesc(t("importExportDesc")).addButton((b) => b.setButtonText(t("importBtn")).onClick(() => new ImportModal(this.app, this.plugin, this).open()));
+  }
+  getSettingDefinitions() {
+    return [
+      {
+        name: "AI Alias",
+        render: (setting) => {
+          const root = setting.settingEl;
+          root.empty();
+          this.renderContent(root);
+          return () => {
+          };
+        }
+      }
+    ];
+  }
+  display() {
+    const { containerEl } = this;
+    containerEl.empty();
+    const appVersion = this.app.version;
+    if (versionAtLeast(appVersion, "1.13.0")) {
+      containerEl.addClass("ai-settings-v2");
+      this.renderContent(containerEl);
+    } else {
+      this.renderUpgradeNotice(containerEl);
+    }
+  }
+  refreshSettings() {
+    const tab = this;
+    if (typeof tab.update === "function") tab.update();
+    else this.display();
+  }
+  renderUpgradeNotice(container) {
+    const t = (k) => this.plugin.t(k);
+    const wrap = container.createDiv("ai-upgrade");
+    wrap.createEl("h1", { text: t("upgradeTitle") });
+    wrap.createEl("p", { text: t("upgradeMsg"), cls: "ai-upgrade-msg" });
+    wrap.createEl("p", { text: t("upgradeHint"), cls: "ai-upgrade-hint" });
   }
   exportMappings() {
     const t = (k) => this.plugin.t(k);
@@ -1895,7 +1950,6 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
   updateAutoPreview() {
     const t = (k) => this.plugin.t(k);
     const cat = this.plugin.categoryById(this.addCatEl.value);
-    const codeVal = this.addCodeEl.value.trim();
     if (cat && !this.codeTouched) {
       const preview = cat.prefix + String(cat.seq + 1).padStart(3, "0");
       this.addCodeEl.value = preview;
@@ -2055,7 +2109,6 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     return this.sortDir > 0 ? " \u25B2" : " \u25BC";
   }
   renderPager(total, pages) {
-    const t = (k) => this.plugin.t(k);
     this.pagerEl.empty();
     this.pagerEl.createEl("span", { cls: "ai-pager-text", text: `\u5171 ${total} \u6761 \xB7 \u7B2C ${this.page + 1} / ${pages} \u9875` });
     const prev = this.pagerEl.createEl("button", { text: "\u2039" });

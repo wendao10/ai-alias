@@ -1097,6 +1097,14 @@
 	margin: 0 !important;
 	max-width: 100% !important;
 }
+/* Upgrade notice for Obsidian < 1.13.0 */
+.ai-upgrade { padding: 28px 24px; max-width: 680px; }
+.ai-upgrade h1 { margin: 0 0 12px; color: var(--text-error); font-size: 20px; }
+.ai-upgrade-msg { margin: 0 0 10px; line-height: 1.7; color: var(--text-normal); }
+.ai-upgrade-hint { margin: 0; line-height: 1.6; color: var(--text-muted); font-size: 0.9em; }
+/* When the custom UI is rendered inside a declarative setting-item row (1.13.0+),
+   strip the default row layout so the page fills cleanly. */
+.setting-item.ai-settings-v2 { display: block; padding: 0; border-top: none; }
 .ai-v2-header {
 	display: flex;
 	align-items: center;
