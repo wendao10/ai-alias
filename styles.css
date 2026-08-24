@@ -1092,15 +1092,15 @@
 	color: var(--text-muted);
 }
 
-/* ===== v1.8.0 Path A: two-column settings page ===== */
-.ai-settings-v2 {
-	padding: 0 !important;
-	margin: 0 !important;
-	max-width: 100% !important;
-}
 /* When the custom UI is rendered inside a declarative setting-item row (1.13.0+),
    strip the default row layout so the page fills cleanly. */
-.setting-item.ai-settings-v2 { display: block; padding: 0; border-top: none; }
+.setting-item.ai-settings-v2 {
+	display: block;
+	padding: 0;
+	margin: 0;
+	max-width: 100%;
+	border-top: none;
+}
 .ai-v2-header {
 	display: flex;
 	align-items: center;
@@ -1108,9 +1108,6 @@
 	padding: 16px 22px;
 	border-bottom: 1px solid var(--background-modifier-border);
 	background: var(--background-primary);
-	position: sticky;
-	top: 0;
-	z-index: 10;
 }
 .ai-v2-title .ai-v2-h2 {
 	margin: 0;
@@ -1123,32 +1120,6 @@
 	font-size: 11px;
 	color: var(--text-muted);
 	margin-top: 2px;
-}
-.ai-v2-headerright {
-	display: flex;
-	align-items: center;
-	gap: 14px;
-}
-.ai-v2-lang {
-	display: flex;
-	gap: 0;
-	background: var(--background-secondary);
-	border-radius: 8px;
-	padding: 3px;
-}
-.ai-v2-lang button {
-	background: transparent;
-	border: 0;
-	color: var(--text-muted);
-	font-size: 12.5px;
-	padding: 5px 12px;
-	border-radius: 6px;
-	cursor: pointer;
-}
-.ai-v2-lang button.is-active {
-	background: var(--interactive-accent);
-	color: var(--text-on-accent);
-	font-weight: 600;
 }
 .ai-v2-close {
 	background: transparent;

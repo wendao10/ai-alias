@@ -1627,27 +1627,6 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     const titleGrp = header.createDiv("ai-v2-title");
     titleGrp.createDiv("ai-v2-h2").setText(t("headerTitle"));
     titleGrp.createDiv("ai-v2-sub").setText(t("headerSub"));
-    const headerRight = header.createDiv("ai-v2-headerright");
-    const langWrap = headerRight.createDiv("ai-v2-lang");
-    const langEn = langWrap.createEl("button", { text: "English", type: "button" });
-    const langZh = langWrap.createEl("button", { text: "\u4E2D\u6587", type: "button" });
-    const syncLang = () => {
-      langEn.toggleClass("is-active", this.plugin.settings.language === "en");
-      langZh.toggleClass("is-active", this.plugin.settings.language === "zh");
-    };
-    syncLang();
-    langEn.addEventListener("click", () => {
-      this.plugin.settings.language = "en";
-      void this.plugin.save();
-      syncLang();
-      this.refreshSettings();
-    });
-    langZh.addEventListener("click", () => {
-      this.plugin.settings.language = "zh";
-      void this.plugin.save();
-      syncLang();
-      this.refreshSettings();
-    });
     const body = root.createDiv("ai-v2-body");
     const secGeneral = body.createDiv("ai-v2-section");
     secGeneral.id = "sec-general";
