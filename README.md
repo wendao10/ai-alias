@@ -77,3 +77,5 @@ A **fully local** Obsidian plugin that deterministically masks sensitive names i
 - 映射表在 `.obsidian/plugins/ai-alias/data.json`。git 仓库为 private，随提交无碍；若仓库变公开，请排除该文件或用"导出映射"自行保管。
 - 重装/换机前用"导出映射"备份 JSON 到安全处；导入即可恢复。
 - 插件完全离线，不联网、不上传。
+
+已上架obsidian第三方插件市场，PKMer链接请见https://pkmer.cn/Pkmer-Docs/10-obsidian/obsidian%E7%A4%BE%E5%8C%BA%E6%8F%92%E4%BB%B6/ai-alias/
