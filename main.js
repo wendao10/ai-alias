@@ -2104,11 +2104,7 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
   }
   afterAdd(code) {
     new import_obsidian.Notice(this.plugin.t("added") + this.plugin.wrap(code));
-    this.addRealEl.value = "";
-    this.addCodeEl.value = "";
-    this.addCatEl.value = this.plugin.settings.categories[0]?.id ?? "";
-    this.codeTouched = false;
-    this.updateAutoPreview();
+    this.toggleAddForm(true);
     this.renderTable();
   }
   saveEdit(i, realRaw, catId) {

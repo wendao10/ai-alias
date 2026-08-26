@@ -2468,11 +2468,9 @@ class AIAliasSettingTab extends PluginSettingTab {
 
 	private afterAdd(code: string): void {
 		new Notice(this.plugin.t('added') + this.plugin.wrap(code));
-		this.addRealEl.value = '';
-		this.addCodeEl.value = '';
-		this.addCatEl.value = this.plugin.settings.categories[0]?.id ?? '';
-		this.codeTouched = false;
-		this.updateAutoPreview();
+		// Collapse the inline "add mapping" form after a successful add so its
+		// controls are auto-hidden (the user must reopen it to add another).
+		this.toggleAddForm(true);
 		this.renderTable();
 	}
 

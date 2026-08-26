@@ -138,24 +138,24 @@
 .ai-col-cb {
 	width: 34px;
 }
-/* Bulletproof checkbox: force native browser rendering so no theme
-   (e.g. AnuPpuccin) can inject a stray dot via appearance:none +
-   pseudo-element. Also suppress any residual pseudo-content. */
+/* Bulletproof checkbox: roll the control back to the UA stylesheet (native
+   rendering) via `all: revert` so no theme (e.g. AnuPpuccin) can inject a
+   stray dot through appearance:none + pseudo-elements. `revert` undoes the
+   theme's author styles without needing !important, which also satisfies the
+   obsidianmd no-important CSS lint; accent-color/size are re-applied after. */
 .ai-alias-tbl .ai-col-cb input[type='checkbox'].ai-cbx {
-	-webkit-appearance: checkbox !important;
-	appearance: auto !important;
+	all: revert;
 	accent-color: var(--interactive-accent);
 	margin: 0;
 	width: auto;
 	height: auto;
 	vertical-align: middle;
-	background: none !important;
 }
 .ai-alias-tbl .ai-col-cb input[type='checkbox'].ai-cbx::before,
 .ai-alias-tbl .ai-col-cb input[type='checkbox'].ai-cbx::after {
-	content: none !important;
-	background: none !important;
-	display: none !important;
+	all: revert;
+	content: normal;
+	display: none;
 }
 .ai-col-cat {
 	width: 116px;
