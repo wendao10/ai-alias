@@ -833,7 +833,6 @@ class BatchAddModal extends Modal {
 		const valid: { real: string; code: string; manual: boolean; category: string | null }[] = [];
 		const skipped: { line: string; reason: string }[] = [];
 		const used = new Set<string>(this.plugin.settings.mappings.map((mm) => mm.code));
-		const localSeq = new Map<string, number>();
 		const perLine = this.perLineEl.checked;
 		const defCat = this.catSel.value;
 		for (const line of raw) {
@@ -881,13 +880,12 @@ class BatchAddModal extends Modal {
 				skipped.push({ line: s, reason: t('needCat') });
 				continue;
 			}
-			let seq = localSeq.get(cat.id) ?? cat.seq;
+			let seq = 0;
 			let code: string;
 			do {
 				seq += 1;
 				code = cat.prefix + String(seq).padStart(3, '0');
 			} while (used.has(code));
-			localSeq.set(cat.id, seq);
 			used.add(code);
 			valid.push({ real, code, manual: false, category: cat.id });
 		}
@@ -2240,9 +2238,9 @@ class AIAliasSettingTab extends PluginSettingTab {
 		const t = (k: string): string => this.plugin.t(k);
 		const cat = this.plugin.categoryById(this.addCatEl.value);
 		if (cat && !this.codeTouched) {
-			// Auto-fill the code field with the next generated code
+			// Auto-fill the code field with the smallest available generated code
 			// (kept in sync with the selected category until the user edits it).
-			const preview = cat.prefix + String(cat.seq + 1).padStart(3, '0');
+			const preview = this.plugin.peekCode(cat);
 			this.addCodeEl.value = preview;
 			this.addHintEl.setText('');
 		} else if (this.codeTouched) {
@@ -2553,15 +2551,24 @@ export default class AIAliasPlugin extends Plugin {
 		);
 	}
 
-	generateCode(cat: Category): string {
+	// Smallest unused sequence number (>=1) for the category's prefix,
+	// computed against the live mapping set. Reuses gaps left by deleted or
+	// unconfirmed codes so alias numbers stay contiguous.
+	peekCode(cat: Category): string {
 		const existing = new Set(this.settings.mappings.map((m) => m.code));
-		let seq = cat.seq;
+		let seq = 0;
 		let code: string;
 		do {
 			seq += 1;
 			code = cat.prefix + String(seq).padStart(3, '0');
 		} while (existing.has(code));
-		cat.seq = seq;
+		return code;
+	}
+
+	generateCode(cat: Category): string {
+		const code = this.peekCode(cat);
+		const n = parseInt(code.slice(cat.prefix.length), 10);
+		if (n > cat.seq) cat.seq = n;
 		return code;
 	}
 

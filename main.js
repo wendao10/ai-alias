@@ -685,7 +685,6 @@ var BatchAddModal = class extends import_obsidian.Modal {
     const valid = [];
     const skipped = [];
     const used = new Set(this.plugin.settings.mappings.map((mm) => mm.code));
-    const localSeq = /* @__PURE__ */ new Map();
     const perLine = this.perLineEl.checked;
     const defCat = this.catSel.value;
     for (const line of raw) {
@@ -733,13 +732,12 @@ var BatchAddModal = class extends import_obsidian.Modal {
         skipped.push({ line: s, reason: t("needCat") });
         continue;
       }
-      let seq = localSeq.get(cat.id) ?? cat.seq;
+      let seq = 0;
       let code;
       do {
         seq += 1;
         code = cat.prefix + String(seq).padStart(3, "0");
       } while (used.has(code));
-      localSeq.set(cat.id, seq);
       used.add(code);
       valid.push({ real, code, manual: false, category: cat.id });
     }
@@ -1894,7 +1892,7 @@ var AIAliasSettingTab = class extends import_obsidian.PluginSettingTab {
     const t = (k) => this.plugin.t(k);
     const cat = this.plugin.categoryById(this.addCatEl.value);
     if (cat && !this.codeTouched) {
-      const preview = cat.prefix + String(cat.seq + 1).padStart(3, "0");
+      const preview = this.plugin.peekCode(cat);
       this.addCodeEl.value = preview;
       this.addHintEl.setText("");
     } else if (this.codeTouched) {
@@ -2178,15 +2176,23 @@ var AIAliasPlugin = class extends import_obsidian.Plugin {
       (c) => c.name.toLowerCase() === t || c.prefix.toLowerCase() === t || c.key && c.key.toLowerCase() === t
     );
   }
-  generateCode(cat) {
+  // Smallest unused sequence number (>=1) for the category's prefix,
+  // computed against the live mapping set. Reuses gaps left by deleted or
+  // unconfirmed codes so alias numbers stay contiguous.
+  peekCode(cat) {
     const existing = new Set(this.settings.mappings.map((m) => m.code));
-    let seq = cat.seq;
+    let seq = 0;
     let code;
     do {
       seq += 1;
       code = cat.prefix + String(seq).padStart(3, "0");
     } while (existing.has(code));
-    cat.seq = seq;
+    return code;
+  }
+  generateCode(cat) {
+    const code = this.peekCode(cat);
+    const n = parseInt(code.slice(cat.prefix.length), 10);
+    if (n > cat.seq) cat.seq = n;
     return code;
   }
   bumpCategorySeqs() {
