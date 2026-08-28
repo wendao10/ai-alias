@@ -2,6 +2,16 @@
 
 A **fully local** Obsidian plugin that deterministically masks sensitive names in your notes with custom aliases **before** you send the text to any public AI — whether an in-Obsidian assistant (Copilot, Editing Toolbar, etc.) or an external tool such as Codex, Claude Code, Doubao, DeepSeek, etc. — then restores them on the AI's reply.
 
+## Features
+- **Fully local & deterministic** — real names are swapped for your own aliases on-device; the mapping table never leaves your machine.
+- **Batch encrypt / decrypt** — process a whole file or an entire folder in one run.
+- **6 preset categories + custom** — people, organization, project, system, product, code, or define your own.
+- **Paste auto-restore** — pasted AI replies restore aliases in one click, with 3 modes: ask / always / never.
+- **Status-bar indicator** — shows the current paste-restore mode at a glance; click to cycle.
+- **Bare-alias fallback** — restores aliases even when the AI drops the wrappers (e.g. `PROJ_01`).
+- **Undo last batch** — every batch keeps a snapshot you can roll back to anytime.
+- **English / 中文 UI** — switch the whole interface language from Settings.
+
 ## Why
 - Sending project names, company/department names, resource/system names, or people's names directly to any public AI — in-Obsidian or external — is a leak risk.
 - This plugin replaces real names with your own alphanumeric aliases (e.g. `[[PROJ_01]]`) locally, so you only ever feed the AI placeholder aliases; when the AI's reply comes back, the same mapping table restores the real names.
@@ -43,6 +53,16 @@ A **fully local** Obsidian plugin that deterministically masks sensitive names i
 # AI Alias（中文）
 
 一个**纯本地**的 Obsidian 插件，用于在与任何公网 AI 协作时——无论是 Obsidian 内的助手（Copilot、Editing Toolbar 等），还是 Codex、Claude Code、豆包、DeepSeek 等外部工具——对笔记里的敏感名称做**确定性加/解密替换**：提交给 AI 前把真实名称换成你自定义的代号，AI 回复回来后再还原。
+
+## 功能特性
+- **纯本地、确定性替换** — 真实名称在本机替换为你自定义的代号，映射表绝不出本机。
+- **批量加 / 解密** — 一次处理整篇笔记或整个文件夹。
+- **6 个预设分类 + 自定义** — 人物、组织、项目、系统、产品、代码，也可自建。
+- **粘贴即还原** — 粘贴 AI 回复一键还原代号，三档模式：询问 / 总是 / 从不。
+- **状态栏指示器** — 一眼看清当前粘贴还原模式，点击即可切换。
+- **裸代号兜底还原** — 即便 AI 漏写包裹符（如 `PROJ_01`）也能还原。
+- **撤销上次批量** — 每次批量操作保留快照，可随时回退。
+- **English / 中文 界面** — 在设置里切换整界面语言。
 
 ## 为什么
 - 把项目名、公司/部门名、资源/系统名、人名等直接发给任何公网 AI（Obsidian 内或外部工具），有泄密风险。
