@@ -125,6 +125,9 @@
 .ai-alias-tbl th.ai-sortable:hover {
 	color: var(--text-normal);
 }
+.ai-alias-tbl th.ai-sortable.is-sorted {
+	color: var(--interactive-accent);
+}
 .ai-alias-tbl tr.ai-sel {
 	background: var(--background-modifier-hover);
 }
@@ -187,6 +190,14 @@
 	min-width: 0;
 	padding: 3px 6px;
 }
+.ai-alias-tbl .ai-mcode-edit {
+	width: 100%;
+	min-width: 0;
+	padding: 3px 6px;
+	font-family: var(--font-monospace);
+	font-size: 0.85em;
+	text-transform: uppercase;
+}
 .ai-pill {
 	display: inline-block;
 	font-size: 0.76em;
@@ -201,7 +212,7 @@
 /* Prototype-matched semantic pill colours (singlecolumn v1.8.8) */
 .ai-pill-blue {
 	background: rgba(108, 156, 255, 0.16);
-	color: #6c9cff;
+	color: #3366cc;
 }
 .theme-dark .ai-pill-blue {
 	background: rgba(108, 156, 255, 0.22);
@@ -209,7 +220,7 @@
 }
 .ai-pill-green {
 	background: rgba(76, 201, 160, 0.16);
-	color: #4cc9a0;
+	color: #167a58;
 }
 .theme-dark .ai-pill-green {
 	background: rgba(76, 201, 160, 0.22);
@@ -217,7 +228,7 @@
 }
 .ai-pill-purple {
 	background: rgba(139, 92, 246, 0.16);
-	color: #8b5cf6;
+	color: #6d4ae0;
 }
 .theme-dark .ai-pill-purple {
 	background: rgba(139, 92, 246, 0.22);
@@ -225,7 +236,7 @@
 }
 .ai-pill-orange {
 	background: rgba(240, 168, 90, 0.16);
-	color: #f0a85a;
+	color: #9a5f14;
 }
 .theme-dark .ai-pill-orange {
 	background: rgba(240, 168, 90, 0.22);
@@ -233,7 +244,7 @@
 }
 .ai-pill-pink {
 	background: rgba(224, 108, 159, 0.16);
-	color: #e06c9f;
+	color: #c93d7f;
 }
 .theme-dark .ai-pill-pink {
 	background: rgba(224, 108, 159, 0.22);
@@ -247,7 +258,7 @@
    so the colours outrank Obsidian's button defaults without !important. */
 .ai-cat-badges .ai-cat-badge.ai-pill-blue {
 	background: rgba(108, 156, 255, 0.16);
-	color: #6c9cff;
+	color: #3366cc;
 }
 .theme-dark .ai-cat-badges .ai-cat-badge.ai-pill-blue {
 	background: rgba(108, 156, 255, 0.22);
@@ -255,7 +266,7 @@
 }
 .ai-cat-badges .ai-cat-badge.ai-pill-green {
 	background: rgba(76, 201, 160, 0.16);
-	color: #4cc9a0;
+	color: #167a58;
 }
 .theme-dark .ai-cat-badges .ai-cat-badge.ai-pill-green {
 	background: rgba(76, 201, 160, 0.22);
@@ -263,7 +274,7 @@
 }
 .ai-cat-badges .ai-cat-badge.ai-pill-purple {
 	background: rgba(139, 92, 246, 0.16);
-	color: #8b5cf6;
+	color: #6d4ae0;
 }
 .theme-dark .ai-cat-badges .ai-cat-badge.ai-pill-purple {
 	background: rgba(139, 92, 246, 0.22);
@@ -271,7 +282,7 @@
 }
 .ai-cat-badges .ai-cat-badge.ai-pill-orange {
 	background: rgba(240, 168, 90, 0.16);
-	color: #f0a85a;
+	color: #9a5f14;
 }
 .theme-dark .ai-cat-badges .ai-cat-badge.ai-pill-orange {
 	background: rgba(240, 168, 90, 0.22);
@@ -279,7 +290,7 @@
 }
 .ai-cat-badges .ai-cat-badge.ai-pill-pink {
 	background: rgba(224, 108, 159, 0.16);
-	color: #e06c9f;
+	color: #c93d7f;
 }
 .theme-dark .ai-cat-badges .ai-cat-badge.ai-pill-pink {
 	background: rgba(224, 108, 159, 0.22);
@@ -412,12 +423,21 @@
 .ai-foot {
 	display: flex;
 	justify-content: flex-end;
+	flex-wrap: wrap;
 	gap: 8px;
 	margin-top: 8px;
 }
 
 /* bare-code confirm modal */
 .ai-context-label {
+	margin: 4px 0 6px;
+}
+.ai-baresec-head {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	font-weight: 600;
+	font-size: 0.92em;
 	margin: 4px 0 6px;
 }
 .ai-barelist {
@@ -470,6 +490,23 @@
 .ai-barectx .ai-hl {
 	color: var(--text-error);
 	font-weight: 700;
+}
+
+/* master "select all" checkbox row (replaces the old 全选 / 清空选择 buttons) */
+.ai-selall-row {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px 2px 10px;
+}
+.ai-selall-row > input[type='checkbox'] {
+	margin: 0;
+	flex: 0 0 auto;
+}
+.ai-selall-label {
+	font-weight: 600;
+	cursor: pointer;
+	user-select: none;
 }
 
 /* ---- category manager (v1.6.0) ---- */
@@ -1106,8 +1143,8 @@
 	align-items: center;
 	justify-content: space-between;
 	padding: 16px 22px;
-	border-bottom: 1px solid var(--background-modifier-border);
-	background: var(--background-primary);
+	/* 融入 Obsidian 设置页原生标题区：不显式铺底、不加底边框 */
+	background: transparent;
 }
 .ai-v2-title .ai-v2-h2 {
 	margin: 0;
@@ -1120,18 +1157,6 @@
 	font-size: 11px;
 	color: var(--text-muted);
 	margin-top: 2px;
-}
-.ai-v2-close {
-	background: transparent;
-	border: 0;
-	color: var(--text-muted);
-	font-size: 22px;
-	line-height: 1;
-	cursor: pointer;
-	padding: 2px 8px;
-}
-.ai-v2-close:hover {
-	color: var(--text-normal);
 }
 .ai-v2-body {
 	display: block;
@@ -1220,7 +1245,8 @@
 	line-height: 1.1;
 }
 .ai-bpstat-num.is-bare {
-	color: var(--text-error);
+	/* neutral count — not an error; red is reserved for real errors */
+	color: var(--text-normal);
 }
 .ai-bpstat-lbl {
 	font-size: 11px;
@@ -1266,6 +1292,9 @@
 	margin: 12px 0;
 }
 .ai-bpsectitle {
+	display: flex;
+	align-items: center;
+	gap: 8px;
 	font-size: 13px;
 	font-weight: 600;
 	color: var(--text-normal);
@@ -1279,10 +1308,62 @@
 	font-size: 12.5px;
 	margin: 12px 0;
 }
+.ai-bpinfo.ai-bpwarn {
+	background: var(--background-modifier-error);
+	color: var(--text-on-accent);
+	font-weight: 600;
+}
 .ai-bpfoodsel {
 	font-size: 12px;
 	color: var(--text-muted);
 	margin-right: auto;
+}
+
+/* ============================================================
+ * AI Alias · 粘贴策略状态指示器 (status bar)
+ * v1.10.0 · 2026-08-28
+ * ============================================================ */
+.status-bar-item.ai-alias-paste-status {
+	display: inline-flex;
+	align-items: center;
+	gap: 0;
+	padding: 2px 6px;
+	border-radius: 6px;
+	cursor: pointer;
+	user-select: none;
+	-webkit-user-select: none;
+	transition: background 150ms ease-out;
+}
+.status-bar-item.ai-alias-paste-status:hover {
+	background: var(--background-modifier-hover);
+}
+.status-bar-item.ai-alias-paste-status:active {
+	transform: scale(0.96);
+	transition: transform 60ms ease-out;
+}
+.status-bar-item.ai-alias-paste-status:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+}
+.status-bar-item.ai-alias-paste-status.is-hidden {
+	display: none;
+}
+.status-bar-item.ai-alias-paste-status .ai-paste-icon {
+	width: 14px;
+	height: 14px;
+	flex-shrink: 0;
+}
+.status-bar-item.ai-alias-paste-status[data-mode='alwaysAsk'] {
+	color: var(--text-accent);
+	background: transparent;
+}
+.status-bar-item.ai-alias-paste-status[data-mode='alwaysRestore'] {
+	color: var(--text-success, #3b6d11);
+	background: transparent;
+}
+.status-bar-item.ai-alias-paste-status[data-mode='neverRestore'] {
+	color: var(--text-faint, #5f5e5a);
+	background: transparent;
 }
 
 /* ===== v1.8.0 Import modal: line-based with preview ===== */
@@ -1379,27 +1460,27 @@
 :root {
   --ai-c0-text: #ba2c2c;
   --ai-c0-bg: rgba(186, 44, 44, 0.16);
-  --ai-c1-text: #ba562c;
+  --ai-c1-text: #a74d28;
   --ai-c1-bg: rgba(186, 86, 44, 0.16);
-  --ai-c2-text: #ba812c;
+  --ai-c2-text: #8d6221;
   --ai-c2-bg: rgba(186, 129, 44, 0.16);
-  --ai-c3-text: #baac2c;
+  --ai-c3-text: #776e1c;
   --ai-c3-bg: rgba(186, 172, 44, 0.16);
-  --ai-c4-text: #9dba2c;
+  --ai-c4-text: #63751c;
   --ai-c4-bg: rgba(157, 186, 44, 0.16);
-  --ai-c5-text: #73ba2c;
+  --ai-c5-text: #4b791d;
   --ai-c5-bg: rgba(115, 186, 44, 0.16);
-  --ai-c6-text: #48ba2c;
+  --ai-c6-text: #307b1d;
   --ai-c6-bg: rgba(72, 186, 44, 0.16);
-  --ai-c7-text: #2cba3a;
+  --ai-c7-text: #1d7d27;
   --ai-c7-bg: rgba(44, 186, 58, 0.16);
-  --ai-c8-text: #2cba65;
+  --ai-c8-text: #1d7b43;
   --ai-c8-bg: rgba(44, 186, 101, 0.16);
-  --ai-c9-text: #2cba8f;
+  --ai-c9-text: #1d7b5e;
   --ai-c9-bg: rgba(44, 186, 143, 0.16);
-  --ai-c10-text: #2cbaba;
+  --ai-c10-text: #1d7979;
   --ai-c10-bg: rgba(44, 186, 186, 0.16);
-  --ai-c11-text: #2c8fba;
+  --ai-c11-text: #237193;
   --ai-c11-bg: rgba(44, 143, 186, 0.16);
   --ai-c12-text: #2c65ba;
   --ai-c12-bg: rgba(44, 101, 186, 0.16);
@@ -1411,9 +1492,9 @@
   --ai-c15-bg: rgba(115, 44, 186, 0.16);
   --ai-c16-text: #9d2cba;
   --ai-c16-bg: rgba(157, 44, 186, 0.16);
-  --ai-c17-text: #ba2cac;
+  --ai-c17-text: #ad29a0;
   --ai-c17-bg: rgba(186, 44, 172, 0.16);
-  --ai-c18-text: #ba2c81;
+  --ai-c18-text: #b62b7e;
   --ai-c18-bg: rgba(186, 44, 129, 0.16);
   --ai-c19-text: #ba2c56;
   --ai-c19-bg: rgba(186, 44, 86, 0.16);
@@ -1501,3 +1582,75 @@
 .ai-cat-badges .ai-cat-badge.ai-pill-c18 { color: var(--ai-c18-text); background: var(--ai-c18-bg); }
 .ai-cat-badges .ai-cat-badge.ai-pill-c19 { color: var(--ai-c19-text); background: var(--ai-c19-bg); }
 /* ===== end palette ===== */
+
+/* v1.10.x: multi-step undo picker list (#19) */
+.ai-undolist {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	margin-bottom: 12px;
+}
+.ai-undorow {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	padding: 10px 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	cursor: pointer;
+}
+.ai-undorow:hover {
+	background: var(--background-modifier-hover);
+}
+.ai-undomain {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	min-width: 0;
+}
+.ai-undodir {
+	font-weight: 600;
+	color: var(--interactive-accent);
+}
+.ai-undostamp {
+	color: var(--text-muted);
+	font-size: 0.85em;
+}
+.ai-undocount {
+	color: var(--text-muted);
+	font-size: 0.85em;
+	white-space: nowrap;
+}
+
+/* v1.10.x: mobile / narrow-screen responsive (#18) */
+@media (max-width: 600px) {
+	.ai-alias-tbl {
+		display: block;
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
+	}
+	.ai-col-cat {
+		width: 84px;
+	}
+	.ai-col-code {
+		width: 132px;
+	}
+	.ai-col-act {
+		width: 84px;
+	}
+	.ai-bareitem {
+		padding: 8px 8px;
+		gap: 8px;
+	}
+	.ai-v2-wraprow {
+		flex-direction: column;
+		align-items: stretch;
+	}
+	.ai-v2-wrapinputs {
+		width: 100%;
+	}
+	.ai-undorow {
+		padding: 8px 10px;
+	}
+}

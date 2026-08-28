@@ -11,6 +11,7 @@ import {
 	TAbstractFile,
 	Menu,
 	Vault,
+	setIcon,
 	SettingDefinitionItem
 } from 'obsidian';
 
@@ -32,6 +33,8 @@ interface Mapping {
 interface AIAliasSettings {
 	prefix: string;
 	suffix: string;
+	lastPrefix?: string;
+	lastSuffix?: string;
 	language: 'en' | 'zh';
 	mappings: Mapping[];
 	categories: Category[];
@@ -44,7 +47,7 @@ interface AIAliasSettings {
 	batchBackupEnabled: boolean;
 	batchBackupKeep: number;
 	// ---- v1.8.0 UI refactor: paste auto-unmask ----
-	pasteUnmask: boolean;
+	pasteUnmaskMode: 'alwaysAsk' | 'alwaysRestore' | 'neverRestore';
 }
 
 const SCHEMA_VERSION = 2;
@@ -55,6 +58,9 @@ const FILTER_UNCAT = '__uncat__';
 const BATCH_YIELD = 20; // files scanned between main-thread yields
 const BATCH_MANY = 100; // above this many changed files the warning turns red + needs a second confirm
 const SNAPSHOT_VERSION = 1;
+
+// command ids must stay stable so user hotkey bindings survive language re-registration
+const CMD_IDS = ['encrypt', 'decrypt', 'copy-ai-prefix', 'open-mappings', 'undo-last-batch'] as const;
 
 const DEFAULT_SETTINGS: AIAliasSettings = {
 	prefix: '[[',
@@ -68,7 +74,7 @@ const DEFAULT_SETTINGS: AIAliasSettings = {
 	batchSkipFrontmatter: true,
 	batchBackupEnabled: true,
 	batchBackupKeep: 5,
-	pasteUnmask: false
+	pasteUnmaskMode: 'alwaysAsk'
 };
 
 interface PresetDef {
@@ -108,14 +114,42 @@ const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 		prefixDesc: 'Left wrapper around the alias. Default [[ renders as an Obsidian link; change to 【 or « to avoid that.',
 		suffix: 'Alias wrap suffix',
 		suffixDesc: 'Right wrapper around the alias.',
-		pasteUnmask: 'Paste & auto-unmask',
-		pasteUnmaskDesc: 'When you paste text that contains aliases (e.g. from an AI reply), automatically restore the real names in the pasted text. Only the pasted text is affected.',
-		pasteUnmasked: 'Auto-restored aliases in pasted text',
+		wrapChangeTitle: 'Alias wrapper changed',
+		wrapChangeMsg: 'Changing the wrapper affects restoring aliases in existing notes. Choose: "Apply new format only" keeps old notes un-migrated (decrypt still falls back to the previous wrapper); "Migrate old → new" walks your notes and replaces the old wrapper on known aliases (a snapshot backup is recommended first); or "Cancel".',
+		wrapApplyOnly: 'Apply new format only',
+		wrapMigrate: 'Migrate old → new',
+		wrapMigrating: 'Migrating wrapper… %n',
+		wrapMigrated: 'Migrated %n wrapped aliases across your notes',
+		wrapApplied: 'Wrapper updated — old notes still restore via the previous wrapper',
+		pasteMode: 'Paste behavior',
+		pasteModeDesc: 'How the plugin handles text pasted into a note that contains wrapped aliases.',
+		pasteModeAsk: 'Ask every time (recommended)',
+		pasteModeAlways: 'Always restore to real names',
+		pasteModeNever: 'Never restore automatically',
+		pasteAskTitle: 'Restore aliases in pasted text?',
+		pasteAskMsg: 'Detected %d wrapped aliases and %d bare aliases in the pasted text.',
+		pasteWrappedHint: 'Wrapped aliases (%d) will be restored automatically.',
+		pasteBareSection: 'Bare aliases',
+		pasteBareSelectAll: 'Select all',
+		pasteRestore: 'Restore selected',
+		pasteKeepOriginal: 'Keep original text',
+		pasteRemember: 'Remember this choice for future pastes',
+		pasteRestoreAuto: 'Auto-restored %d wrapped aliases; %d bare aliases detected (not restored). Select them and run "Convert aliases to real names" or use the right-click menu to handle.',
+		pasteUnmasked: 'Restored %d aliases.',
 		add: 'Single',
+		addContinuous: 'Continuous add',
 		importExport: 'Import / Export mappings',
-		importExportDesc: 'Export: copy JSON to clipboard (safe, not written to any note). Import: paste JSON from clipboard; choose Clear & insert or Insert.',
+		importExportDesc: 'Export: copy full settings (including wrapper, language and batch options) as JSON to clipboard (safe, not written to any note). Import: paste JSON or real=code lines; choose Clear & insert or Insert; global settings are restored on confirm.',
 		exportBtn: 'Export to clipboard',
+		exportDone: 'Settings & mappings exported to clipboard (JSON)',
+		exportTitle: 'Export settings',
+		exportDesc: 'Full settings (mappings, categories, wrapper, language, batch options) are exported as JSON.',
+		exportCopy: 'Copy to clipboard',
+		exportDownload: 'Download .json file',
+		exportDownloaded: 'Settings downloaded as ai-alias-settings.json',
 		importBtn: 'Import from clipboard',
+		importSettingsMsg: 'This export also contains global settings (wrapper, language, batch options). Apply them too?',
+		importSettingsApply: 'Apply settings too',
 		// CRUD manager
 		mappingTitle: 'Mapping table',
 		openMappingDesc: 'Open in a wider full-screen window (recommended to avoid the narrow right-side panel).',
@@ -123,7 +157,11 @@ const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 		searchPh: 'Search real name / alias…',
 		batchAdd: 'Batch',
 		delSel: 'Delete selected',
+		delSelConfirm: 'Delete %d selected mapping(s)? This cannot be undone.',
+		delSelDone: 'Deleted %d mapping(s)',
 		clearAll: 'Clear all',
+		clearAllConfirm: 'Clear ALL %d mappings? This cannot be undone.',
+		clearAllDone: 'Cleared %d mapping(s)',
 		toolImport: 'Import',
 		toolExport: 'Export',
 		addSave: 'Add',
@@ -143,6 +181,10 @@ const STR: { en: Record<string, string>; zh: Record<string, string> } = {
 		added: 'Added: ',
 		addedN: 'Added %d entries',
 		edited: 'Saved changes',
+		editRenumberTitle: 'Renumber alias?',
+		editRenumberMsg: 'Category changed. Continue with new alias %c, or keep the current one?',
+		editRenumberYes: 'Renumber',
+		editRenumberKeep: 'Keep current alias',
 		delOne: 'Deleted 1 entry',
 		delN: 'Deleted %d entries',
 		confirmDelSel: 'Delete the selected %d entries?',
@@ -180,11 +222,12 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		decrypted: 'Decrypted (selection / whole note)',
 		// bare-code (unwrapped alias) recovery
 		bareTitle: 'Unwrapped alias codes found',
-		bareDesc: 'The following %d alias code(s) appear WITHOUT the %p … %s wrapper, so they were not auto-restored. Check the ones to convert to real names, then click Replace selected.',
+		bareDesc: 'This command first restores all wrapped alias codes (e.g. %p CODE %s) to real names. The following %d bare code(s) are NOT wrapped — optionally check the ones to also restore, then click Replace selected. Or click "Convert normal codes only" to skip bare codes.',
 		bareWarn: 'Warning: a bare code can look like a normal word. Review the context of each before replacing.',
 		bareSelectAll: 'Select all',
 		bareSelectNone: 'Clear selection',
 		bareReplace: 'Replace selected (%d)',
+		bareNormalOnly: 'Convert normal codes only',
 		bareContext: 'Context',
 		bareBodySection: 'In note body',
 		bareTitleSection: 'In note title (file name)',
@@ -192,6 +235,7 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		bareTitleWarn2: 'This rename is a file-level operation and cannot be undone with the in-note Undo (Ctrl/Cmd+Z) — please proceed with caution.',
 		bareTitleRenamed: 'Renamed note title',
 		bareTitleSkip: 'Skipped %d title entr(y/ies) with invalid file-name characters',
+		bareCbAria: 'Restore alias %c to real name %r',
 		prefixCopied: 'Copied AI prompt prefix to clipboard',
 		copyFail: 'Copy failed: ',
 		promptPrefix: 'Note: strings in the form %PXXX%S in the following text are placeholder aliases (e.g. %PPROJ_01%S, %PORG_ABC%S), representing masked real entities. Keep these aliases exactly as-is: do not translate, explain, rewrite, or guess their meaning; if you need to refer to them, keep using the same alias.',
@@ -240,7 +284,7 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		batchIncludeSubDesc: 'When running a batch action on a folder, also process notes inside its subfolders.',
 		batchBarePolicy: 'Bare alias codes on batch decrypt',
 		batchBarePolicyDesc:
-			'A bare code is an alias that appears without the wrapper (AI replies often drop it). "Confirm each" lists every bare code, unchecked by default. "Restore all" pre-checks them all. "Skip" restores only aliases that still have the wrapper.',
+			'A bare code is an alias that appears without the wrapper (AI replies often drop it). Bare codes are pre-selected for restore by default so nothing is lost; uncheck any you want to keep as aliases. "Skip" leaves bare codes untouched and restores only aliases that still have the wrapper.',
 		batchBarePolicyConfirm: 'Confirm each (recommended)',
 		batchBarePolicySkip: 'Skip bare codes',
 		batchBarePolicyRestore: 'Restore all bare codes',
@@ -253,7 +297,8 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		batchBackupDesc:
 			'Stores the original content of every file about to change so "Undo last batch operation" can roll it back. Snapshots contain real names and live in the plugin folder next to your mapping table.',
 		batchBackupKeepName: 'Snapshots to keep',
-		batchBackupKeepDesc: 'Older snapshots are removed automatically. Allowed range 1–20.',
+		batchBackupKeepDesc1: 'Batch operations can be undone via the command palette: "AI Alias: Undo last batch operation (撤销上次批量操作)".',
+		batchBackupKeepDesc2: 'Older snapshots beyond the set count are removed automatically. Allowed range 1–20.',
 		// ---- v1.7.0 batch operations: menu ----
 		menuBatchEncFile: 'AI Alias: Real name → Alias',
 		menuBatchDecFile: 'AI Alias: Alias → Real name',
@@ -277,7 +322,7 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		bpRecursive: ' (including subfolders)',
 		bpSummary: 'Scanned %s note(s) → will change %c · %n replacement(s)',
 		bpBreakdown: 'With alias %w · bare %b · titles %t',
-		bpPolicyHint: 'Bare codes are listed one by one for you to confirm; nothing is restored automatically.',
+		bpPolicyHint: 'Bare codes are pre-selected below; uncheck any you want to keep as aliases.',
 		bpPolicyRestoreAll: 'Bare codes are pre-selected below (restore all); uncheck any you want to keep as aliases.',
 		bpSkipBare: 'Skip bare codes (restore only aliases that have the wrapper)',
 		bpRenameTitles: 'Also restore note titles (renames the files)',
@@ -311,12 +356,13 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		bpFileListTitle: 'File list',
 		bpInfoBar: 'Operation will modify files; a snapshot was auto-created and can be undone anytime.',
 		bpInfoBarFmt: 'Operation will modify %d file(s); a snapshot was auto-created and can be undone anytime.',
+		bpInfoBarNoBackup: 'Snapshot is OFF: %d file(s) will be modified and CANNOT be rolled back!',
 		bpSelected: 'Selected %d / %d',
 		bpRunEnc: 'Run encryption (%d notes)',
 		bpRunDec: 'Run decryption (%d notes)',
 		importTitleV2: 'Batch import mappings',
 		importSubV2: 'One per line: real name = alias. Preview, then insert into the mapping table.',
-		importInputLabel: 'Mapping content (each line: original = alias)',
+		importInputLabel: 'Mapping content (each line: real name = alias)',
 		importModeLabel: 'Import mode',
 		importMergeV2: 'Append insert',
 		importOverwriteV2: 'Clear & insert',
@@ -338,13 +384,27 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		undoSkipped: ' · skipped %n changed since then',
 		undoMissing: ' · %n note(s) no longer exist',
 		undoFail: 'Undo failed: ',
+		undoPickTitle: 'Choose a batch run to roll back',
+		undoPickDesc: 'The following snapshots can be rolled back. Click one to confirm.',
+		undoPickRow: '%n note(s)',
 		// preset category meanings (legend)
 		cat_platform: 'Platform',
 		cat_resource: 'Resource',
 		cat_person: 'Person',
 		cat_place: 'Place',
 		cat_dept1: 'Department L1',
-		cat_dept2: 'Department L2'
+		cat_dept2: 'Department L2',
+		// v1.10.0: status bar paste strategy indicator (icon-only, hover tooltip)
+		pasteStatusAskLabel: 'Ask each time',
+		pasteStatusAutoLabel: 'Always restore',
+		pasteStatusOffLabel: 'Off (manual only)',
+		pasteStatusTooltipAsk:
+			'AI Alias paste-restore real names · Ask each time (modal confirm) · Click to switch setting',
+		pasteStatusTooltipAuto:
+			'AI Alias paste-restore real names · Always restore (auto-restore wrapped aliases) · Click to switch setting',
+		pasteStatusTooltipOff:
+			'AI Alias paste-restore real names · Off (keep original text) · Click to switch setting',
+		pasteStatusSwitchedToast: 'Paste strategy switched to: %s'
 	},
 	zh: {
 		headerTitle: 'AI Alias 设置',
@@ -364,14 +424,42 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		prefixDesc: '包裹代号的左符号。默认 [[ 会被 Obsidian 渲染成链接，可改为 【 或 « 避免。',
 		suffix: '代号包裹后缀',
 		suffixDesc: '包裹代号的右符号。',
-		pasteUnmask: '粘贴即还原',
-		pasteUnmaskDesc: '粘贴包含代号的内容（如 AI 回复）时，自动把代号还原为真实名称。仅影响粘贴进来的文本。',
-		pasteUnmasked: '已自动还原粘贴文本中的代号',
+		wrapChangeTitle: '代号包裹符已更改',
+		wrapChangeMsg: '更改包裹符将影响已有笔记中代号的还原。请选择：「仅应用新格式」保留旧笔记不动（还原时仍会回退到上一版包裹符）；「迁移旧→新」遍历笔记、把已知代号上的旧包裹符替换为新包裹符（建议先建快照备份）；或「取消」。',
+		wrapApplyOnly: '仅应用新格式',
+		wrapMigrate: '迁移旧→新',
+		wrapMigrating: '正在迁移包裹符… %n',
+		wrapMigrated: '已在笔记中迁移 %n 处代号包裹',
+		wrapApplied: '包裹符已更新 — 旧笔记仍可用上一版包裹符还原',
+		pasteMode: '粘贴行为',
+		pasteModeDesc: '粘贴含包裹代号的内容时如何处理。',
+		pasteModeAsk: '每次询问（推荐）',
+		pasteModeAlways: '始终还原为真实名',
+		pasteModeNever: '不自动还原',
+		pasteAskTitle: '还原粘贴文本中的代号？',
+		pasteAskMsg: '检测到粘贴文本中含 %d 个包裹代号、%d 个裸代号。',
+		pasteWrappedHint: '包裹代号（%d 个）将被自动还原。',
+		pasteBareSection: '裸代号',
+		pasteBareSelectAll: '全选',
+		pasteRestore: '还原选中的',
+		pasteKeepOriginal: '保留原文',
+		pasteRemember: '记住本次选择（下次粘贴不再询问）',
+		pasteRestoreAuto: '已自动还原 %d 个包裹代号；另检测到 %d 个裸代号未还原，请选中后用「代号转真实名」命令或右键菜单处理。',
+		pasteUnmasked: '已还原 %d 个代号。',
 		add: '单条',
+		addContinuous: '连续新增',
 		importExport: '导入 / 导出映射',
-		importExportDesc: '导出：复制 JSON 到剪贴板（安全，不写入任何笔记）。导入：从剪贴板粘贴 JSON，可选择清空后插入或插入。',
+		importExportDesc: '导出：将完整设置（含包裹符、语言、批量选项）复制为 JSON 到剪贴板（安全，不写入任何笔记）。导入：粘贴 JSON 或 真实名=代号 行，可选择清空后插入或插入；全局设置在确认后一并恢复。',
 		exportBtn: '导出到剪贴板',
+		exportDone: '已导出设置与映射到剪贴板（JSON）',
+		exportTitle: '导出设置',
+		exportDesc: '将完整设置（映射、分类、包裹符、语言、批量选项）导出为 JSON。',
+		exportCopy: '复制到剪贴板',
+		exportDownload: '下载 .json 文件',
+		exportDownloaded: '已下载 ai-alias-settings.json',
 		importBtn: '从剪贴板导入',
+		importSettingsMsg: '该导出还包含全局设置（包裹符、语言、批量选项），是否一并恢复？',
+		importSettingsApply: '一并恢复设置',
 		// CRUD manager
 		mappingTitle: '映射表',
 		openMappingDesc: '在更宽的全屏窗口中管理映射表（推荐，避免右侧设置面板过窄）。',
@@ -379,7 +467,11 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		searchPh: '搜索真实名 / 代号…',
 		batchAdd: '批量',
 		delSel: '删除选中',
+		delSelConfirm: '删除选中的 %d 条映射？此操作不可撤销。',
+		delSelDone: '已删除 %d 条映射',
 		clearAll: '清空全部',
+		clearAllConfirm: '清空全部 %d 条映射？此操作不可撤销。',
+		clearAllDone: '已清空 %d 条映射',
 		toolImport: '导入',
 		toolExport: '导出',
 		addSave: '新增',
@@ -393,19 +485,23 @@ cmdPrefix: 'AI Alias: Copy AI prompt prefix (复制 AI 提示词前缀)',
 		del: '删除',
 		empty: '（空）请先新增条目。',
 		filteredEmpty: '无匹配结果。',
-		errEmpty: '原文和代号都不能为空',
+		errEmpty: '真实名和代号都不能为空',
 		errChars: '代号只能包含字母、数字、下划线',
 		errDup: '该代号已存在，请换一个',
 		added: '已添加：',
 		addedN: '已添加 %d 条',
 		edited: '已保存修改',
+		editRenumberTitle: '重新编号？',
+		editRenumberMsg: '分类已变更。将重编号为 %c，是否继续？或保留原代号？',
+		editRenumberYes: '重编号',
+		editRenumberKeep: '保留原代号',
 		delOne: '已删除 1 条',
 		delN: '已删除 %d 条',
 		confirmDelSel: '确定删除选中的 %d 条？',
 		confirmClear: '确定清空全部 %d 条映射？此操作不可撤销。',
 		cancelClear: '已取消',
 		batchTitle: '批量新增映射',
-		batchFmt: '每行一条。「原文」→ 用默认类别自动出码；「原文|类别」→ 指定类别自动出码；「原文=代号」→ 手动代号（未分类）。空行忽略。',
+		batchFmt: '每行一条。「真实名」→ 用默认类别自动出码；「真实名|类别」→ 指定类别自动出码；「真实名=代号」→ 手动代号（未分类）。空行忽略。',
 		batchSave: '新增',
 		previewWarn: '跳过：',
 		dupInBatch: '批量内重复',
@@ -436,11 +532,12 @@ cmdPrefix: 'AI Alias：复制 AI 提示词前缀（Copy AI prompt prefix）',
 		decrypted: '已解密（选中内容 / 全文）',
 		// 裸代号（未加前后缀）兜底还原
 		bareTitle: '发现未加前后缀的代号',
-		bareDesc: '以下 %d 个代号未用 %p … %s 包裹，因此未被自动还原。勾选要还原为真实名的项，然后点“替换选中”。',
+		bareDesc: '本命令会先将所有用 %p … %s 包裹的正常代号还原为真实名。以下 %d 个裸代号未加包裹，可勾选要额外还原的项，再点“替换选中”；或点“仅转换正常代号”跳过裸代号。',
 		bareWarn: '注意：裸代号可能与正常单词混淆，替换前请逐条核对上下文。',
 		bareSelectAll: '全选',
 		bareSelectNone: '清空选择',
 		bareReplace: '替换选中（%d）',
+		bareNormalOnly: '仅转换正常代号',
 		bareContext: '上下文',
 		bareBodySection: '笔记正文',
 		bareTitleSection: '笔记标题（文件名）',
@@ -448,6 +545,7 @@ cmdPrefix: 'AI Alias：复制 AI 提示词前缀（Copy AI prompt prefix）',
 		bareTitleWarn2: '此重命名属于文件级操作，无法用笔记内的「撤销」（Ctrl/Cmd+Z）还原，请慎重操作。',
 		bareTitleRenamed: '已重命名笔记标题',
 		bareTitleSkip: '已跳过 %d 条含非法文件名字符的标题还原',
+		bareCbAria: '还原代号 %c 为真实名 %r',
 		prefixCopied: '已复制 AI 提示词前缀到剪贴板',
 		copyFail: '复制失败：',
 		promptPrefix: '注意：以下文本中的 %PXXX%S 形式字符串是占位代号（例如 %PPROJ_01%S、%PORG_ABC%S），代表被脱敏的真实实体。请严格原样保留这些代号，不要翻译、解释、改写或猜测其含义；若需提及，请继续使用同一代号。',
@@ -478,16 +576,16 @@ cmdPrefix: 'AI Alias：复制 AI 提示词前缀（Copy AI prompt prefix）',
 		smartCatDone: '已归类 %d 条，%d 条无法识别，请手动处理。',
 		ok: '知道了',
 		legendTitle: '代号图例（前缀=类别）：',
-		realName: '原文',
+		realName: '真实名',
 		aliasName: '代号',
-		realPlaceholder: '原文',
+		realPlaceholder: '真实名',
 		codePlaceholder: '代号（字母/数字/下划线）',
 		codeName: '代号',
 		codePlaceholderAuto: '留空自动生成',
 		pagerPrev: '上一页',
 		pagerNext: '下一页',
 		catNotFound: '未找到该类别',
-		batchPerLine: '每行格式：原文|类别',
+		batchPerLine: '每行格式：真实名|类别',
 		batchCatDefault: '默认类别',
 		// ---- v1.7.0 批量操作：设置项 ----
 		batchHeading: '批量操作（文件列表右键）',
@@ -496,7 +594,7 @@ cmdPrefix: 'AI Alias：复制 AI 提示词前缀（Copy AI prompt prefix）',
 		batchIncludeSubDesc: '对文件夹执行批量操作时，是否一并处理其子文件夹内的笔记。',
 		batchBarePolicy: '批量解密时的裸代号策略',
 		batchBarePolicyDesc:
-			'裸代号指没有前后缀包裹的代号（AI 回复经常把包裹弄丢）。「逐条确认」会把所有裸代号列出、默认不勾选；「全部还原」默认全部勾选；「跳过」则只还原仍带前后缀的代号。',
+			'裸代号指没有前后缀包裹的代号（AI 回复经常把包裹弄丢）。裸代号默认已勾选还原，可逐条取消勾选以保留为代号；「跳过」则不处理裸代号，只还原仍带前后缀的代号。',
 		batchBarePolicyConfirm: '逐条确认（推荐）',
 		batchBarePolicySkip: '跳过裸代号',
 		batchBarePolicyRestore: '全部还原裸代号',
@@ -508,7 +606,8 @@ cmdPrefix: 'AI Alias：复制 AI 提示词前缀（Copy AI prompt prefix）',
 		batchBackupDesc:
 			'把所有即将变更文件的原始内容存下来，供「撤销上次批量操作」回滚。快照含真实名，与映射表同在插件目录下，请同等对待。',
 		batchBackupKeepName: '快照保留份数',
-		batchBackupKeepDesc: '超出份数的旧快照会被自动清理。允许范围 1–20。',
+		batchBackupKeepDesc1: '批量操作可通过命令面板「AI Alias：撤销上次批量操作（Undo last batch operation）」撤销。',
+		batchBackupKeepDesc2: '超出设置份数的旧快照会被自动清理，份数范围 1–20。',
 		// ---- v1.7.0 批量操作：右键菜单 ----
 		menuBatchEncFile: 'AI Alias：真实名 → 代号',
 		menuBatchDecFile: 'AI Alias：代号 → 真实名',
@@ -532,7 +631,7 @@ cmdPrefix: 'AI Alias：复制 AI 提示词前缀（Copy AI prompt prefix）',
 		bpRecursive: '（含子文件夹）',
 		bpSummary: '扫描 %s 篇 → 将修改 %c 篇 · 共 %n 处',
 		bpBreakdown: '含代号 %w · 裸代号 %b · 标题 %t',
-		bpPolicyHint: '裸代号默认全部列出、逐条勾选确认，不会自动还原。',
+		bpPolicyHint: '裸代号已默认勾选还原；如需保留为代号可取消勾选。',
 		bpPolicyRestoreAll: '裸代号已默认全部勾选（全部还原），如需保留为代号可取消勾选。',
 		bpSkipBare: '跳过裸代号（仅还原带前后缀的代号）',
 		bpRenameTitles: '同时还原笔记标题（会重命名文件）',
@@ -566,12 +665,13 @@ cmdPrefix: 'AI Alias：复制 AI 提示词前缀（Copy AI prompt prefix）',
 		bpFileListTitle: '文件清单',
 		bpInfoBar: '操作将修改文件，已自动创建快照，可随时撤销。',
 		bpInfoBarFmt: '操作将修改 %d 个文件，已自动创建快照，可随时撤销。',
+		bpInfoBarNoBackup: '快照已关闭：将修改 %d 个文件，且不可回滚！',
 		bpSelected: '已选 %d / %d 个文件',
 		bpRunEnc: '执行加密（%d 篇）',
 		bpRunDec: '执行解密（%d 篇）',
 		importTitleV2: '批量导入映射',
 		importSubV2: '每行一条：真实名=代号，预览后插入映射表',
-		importInputLabel: '映射内容（每行 原文=代号）',
+		importInputLabel: '映射内容（每行 真实名=代号）',
 		importModeLabel: '导入方式',
 		importMergeV2: '追加插入',
 		importOverwriteV2: '清空后插入',
@@ -593,13 +693,24 @@ cmdPrefix: 'AI Alias：复制 AI 提示词前缀（Copy AI prompt prefix）',
 		undoSkipped: ' · 跳过 %n 篇（之后被手工改动）',
 		undoMissing: ' · %n 篇笔记已不存在',
 		undoFail: '撤销失败：',
+		undoPickTitle: '选择要回滚的批量操作',
+		undoPickDesc: '以下快照可回退，点击某一项确认后恢复。',
+		undoPickRow: '%n 篇笔记',
 		// 预设类别含义（图例）
 		cat_platform: '平台',
 		cat_resource: '资源',
 		cat_person: '人名',
 		cat_place: '地点',
 		cat_dept1: '部门(一级)',
-		cat_dept2: '部门(二级)'
+		cat_dept2: '部门(二级)',
+		// v1.10.0: status bar 粘贴策略指示器（仅图标，hover tooltip 说明）
+		pasteStatusAskLabel: '询问',
+		pasteStatusAutoLabel: '自动',
+		pasteStatusOffLabel: '禁用',
+		pasteStatusTooltipAsk: 'AI Alias粘贴还原原始名 · 每次询问（弹窗确认）· 单击可切换设置',
+		pasteStatusTooltipAuto: 'AI Alias粘贴还原原始名 · 始终还原（自动还原包裹代号）· 单击可切换设置',
+		pasteStatusTooltipOff: 'AI Alias粘贴还原原始名 · 不自动还原（保留原文）· 单击可切换设置',
+		pasteStatusSwitchedToast: '已切换粘贴策略至：%s'
 	}
 };
 
@@ -781,6 +892,243 @@ class ConfirmDialog extends Modal {
 	}
 }
 
+// Three-choice dialog shown when the alias wrapper (prefix/suffix) is changed,
+// so existing notes are never silently un-restorable.
+class WrapperChangeModal extends Modal {
+	plugin: AIAliasPlugin;
+	oldP: string;
+	oldS: string;
+	newP: string;
+	newS: string;
+	input: HTMLInputElement;
+	revertVal: string;
+
+	constructor(app: App, plugin: AIAliasPlugin, oldP: string, oldS: string, newP: string, newS: string, input: HTMLInputElement, revertVal: string) {
+		super(app);
+		this.plugin = plugin;
+		this.oldP = oldP;
+		this.oldS = oldS;
+		this.newP = newP;
+		this.newS = newS;
+		this.input = input;
+		this.revertVal = revertVal;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		const t = (k: string): string => this.plugin.t(k);
+		this.titleEl.setText(t('wrapChangeTitle'));
+		contentEl.createEl('p', { text: t('wrapChangeMsg') });
+		const foot = contentEl.createEl('div', { cls: 'ai-foot' });
+		foot.createEl('button', { text: t('cancel') }).addEventListener('click', () => {
+			this.input.value = this.revertVal;
+			this.close();
+		});
+		foot.createEl('button', { text: t('wrapApplyOnly') }).addEventListener('click', () => {
+			void this.apply(false);
+			this.close();
+		});
+		foot.createEl('button', { text: t('wrapMigrate'), cls: 'mod-cta' }).addEventListener('click', () => {
+			void this.apply(true);
+			this.close();
+		});
+	}
+
+	private async apply(doMigrate: boolean): Promise<void> {
+		this.plugin.settings.prefix = this.newP;
+		this.plugin.settings.suffix = this.newS;
+		this.plugin.settings.lastPrefix = this.oldP;
+		this.plugin.settings.lastSuffix = this.oldS;
+		await this.plugin.save();
+		if (doMigrate) {
+			await this.plugin.migrateWrapper(this.oldP, this.oldS, this.newP, this.newS);
+		} else {
+			new Notice(this.plugin.t('wrapApplied'));
+		}
+	}
+}
+
+// Two-choice dialog shown before an auto-generated alias is renumbered
+// because its category changed ("renumber" vs "keep the current alias").
+class RenumberModal extends Modal {
+	plugin: AIAliasPlugin;
+	msg: string;
+	renumberText: string;
+	keepText: string;
+	onRenumber: () => void;
+	onKeep: () => void;
+
+	constructor(app: App, plugin: AIAliasPlugin, msg: string, renumberText: string, keepText: string, onRenumber: () => void, onKeep: () => void) {
+		super(app);
+		this.plugin = plugin;
+		this.msg = msg;
+		this.renumberText = renumberText;
+		this.keepText = keepText;
+		this.onRenumber = onRenumber;
+		this.onKeep = onKeep;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		const t = (k: string): string => this.plugin.t(k);
+		this.titleEl.setText(t('editRenumberTitle'));
+		contentEl.createEl('p', { text: this.msg });
+		const foot = contentEl.createEl('div', { cls: 'ai-foot' });
+		foot.createEl('button', { text: this.keepText }).addEventListener('click', () => {
+			this.close();
+			this.onKeep();
+		});
+		foot.createEl('button', { text: this.renumberText, cls: 'mod-cta' }).addEventListener('click', () => {
+			this.close();
+			this.onRenumber();
+		});
+	}
+}
+
+// Asks the user, on every paste that contains aliases, whether to restore
+// wrapped codes (always) and which bare codes (per-item) to real names.
+// The clipboard paste has already been intercepted (default prevented) by
+// the time this opens.
+class PasteRestoreModal extends Modal {
+	plugin: AIAliasPlugin;
+	data: string;
+	wrappedCount: number;
+	bareHits: BareHit[];
+	bareChecks: boolean[];
+	editor: Editor;
+	rememberEl!: HTMLInputElement;
+	restoreBtn!: HTMLButtonElement;
+	selAllEl!: HTMLInputElement;
+	private checkEls: HTMLInputElement[] = [];
+
+	constructor(app: App, plugin: AIAliasPlugin, data: string, wrappedCount: number, bareHits: BareHit[], editor: Editor) {
+		super(app);
+		this.plugin = plugin;
+		this.data = data;
+		this.wrappedCount = wrappedCount;
+		this.bareHits = bareHits;
+		this.bareChecks = bareHits.map(() => true); // default: all bare selected
+		this.editor = editor;
+	}
+
+	onOpen(): void {
+		const t = (k: string): string => this.plugin.t(k);
+		this.titleEl.setText(t('pasteAskTitle'));
+		const { contentEl } = this;
+		const bareCount = this.bareHits.length;
+		contentEl.createEl('p', { text: t('pasteAskMsg').replace('%d', String(this.wrappedCount)).replace('%d', String(bareCount)) });
+		if (this.wrappedCount > 0) {
+			contentEl.createEl('p', { cls: 'ai-sub ai-context-label', text: t('pasteWrappedHint').replace('%d', String(this.wrappedCount)) });
+		}
+		if (bareCount > 0) {
+			const section = contentEl.createDiv('ai-baresec');
+			const head = section.createDiv('ai-baresec-head');
+			this.selAllEl = head.createEl('input', { type: 'checkbox', cls: 'ai-cbx' });
+			this.selAllEl.checked = this.bareChecks.every(Boolean);
+			head.createSpan({ text: t('pasteBareSection') + ' (' + bareCount + ')' });
+			this.selAllEl.addEventListener('change', () => {
+				const on = this.selAllEl.checked;
+				this.bareChecks = this.bareChecks.map(() => on);
+				this.checkEls.forEach((el) => (el.checked = on));
+				this.selAllEl.indeterminate = false;
+				this.refreshFooter();
+			});
+			const list = section.createDiv('ai-barelist');
+			this.checkEls = [];
+			// context source is the post-wrapped text (bare positions live there)
+			const ctxSrc = this.plugin.decrypt(this.data);
+			this.bareHits.forEach((h, i) => {
+				const row = list.createDiv('ai-bareitem');
+				const cb = row.createEl('input', { type: 'checkbox', cls: 'ai-cbx' });
+				cb.checked = true;
+				cb.addEventListener('change', () => {
+					this.bareChecks[i] = cb.checked;
+					this.selAllEl.checked = this.bareChecks.every(Boolean);
+					this.selAllEl.indeterminate = !this.selAllEl.checked && this.bareChecks.some(Boolean);
+					this.refreshFooter();
+				});
+				this.checkEls.push(cb);
+				const body = row.createDiv('ai-barebody');
+				const head2 = body.createDiv('ai-barecode');
+				head2.createSpan({ text: h.code, cls: 'ai-code' });
+				head2.createSpan({ text: '  →  ', cls: 'ai-arrow' });
+				head2.createSpan({ text: h.real, cls: 'ai-real' });
+				this.renderContext(body, h, ctxSrc);
+			});
+		}
+		const remRow = contentEl.createEl('label', { cls: 'ai-manual-label' });
+		this.rememberEl = remRow.createEl('input', { type: 'checkbox' });
+		remRow.createSpan({ text: ' ' + t('pasteRemember') });
+		const foot = contentEl.createEl('div', { cls: 'ai-foot' });
+		foot.createEl('button', { text: t('pasteKeepOriginal') }).addEventListener('click', () => {
+			void this.finish(false);
+		});
+		this.restoreBtn = foot.createEl('button', { text: t('pasteRestore'), cls: 'mod-cta' });
+		this.restoreBtn.addEventListener('click', () => {
+			void this.finish(true);
+		});
+		this.restoreBtn.focus();
+		this.refreshFooter();
+	}
+
+	private refreshFooter(): void {
+		const t = (k: string): string => this.plugin.t(k);
+		const selected = this.bareChecks.filter(Boolean).length;
+		const total = this.bareHits.length;
+		const tail = total > 0 ? ' (' + this.wrappedCount + ' 代号 + ' + selected + ' 裸代号)' : ' (' + this.wrappedCount + ')';
+		this.restoreBtn.setText(t('pasteRestore') + tail);
+	}
+
+	private renderContext(parent: HTMLElement, h: BareHit, source: string): void {
+		const before = source.slice(Math.max(0, h.start - 20), h.start);
+		const after = source.slice(h.end, Math.min(source.length, h.end + 20));
+		const lead = h.start > 20 ? '…' : '';
+		const tail = h.end + 20 < source.length ? '…' : '';
+		const ctx = parent.createEl('div', { cls: 'ai-barectx' });
+		if (lead) ctx.createSpan({ text: lead });
+		ctx.createSpan({ text: before });
+		ctx.createSpan({ text: source.slice(h.start, h.end), cls: 'ai-hl' });
+		ctx.createSpan({ text: after });
+		if (tail) ctx.createSpan({ text: tail });
+	}
+
+	private async finish(doRestore: boolean): Promise<void> {
+		if (this.rememberEl && this.rememberEl.checked) {
+			this.plugin.settings.pasteUnmaskMode = doRestore ? 'alwaysRestore' : 'neverRestore';
+			await this.plugin.save();
+		}
+		if (doRestore) {
+			let out = this.plugin.decrypt(this.data);
+			// replace selected bare codes on the post-wrapped text (split/join per code)
+			const selectedCodes = new Set<string>();
+			this.bareChecks.forEach((c, i) => {
+				if (c) selectedCodes.add(this.bareHits[i].code);
+			});
+			let bareRestored = 0;
+			for (const code of selectedCodes) {
+				const hit = this.bareHits.find((h) => h.code === code);
+				if (!hit) continue;
+				const occ = out.split(code).length - 1;
+				if (occ > 0) {
+					out = out.split(code).join(hit.real);
+					bareRestored += occ;
+				}
+			}
+			this.editor.replaceSelection(out);
+			new Notice(this.plugin.t('pasteUnmasked').replace('%d', String(this.wrappedCount + bareRestored)));
+		} else {
+			// re-insert the original clipboard text as a single editor change so
+			// Ctrl+Z naturally undoes the whole paste unit
+			this.editor.replaceSelection(this.data);
+		}
+		this.close();
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}
+
 class BatchAddModal extends Modal {
 	plugin: AIAliasPlugin;
 	tab: AIAliasSettingTab;
@@ -940,6 +1288,7 @@ class ImportModal extends Modal {
 	preview: { valid: { real: string; code: string; category: string | null; manual: boolean }[]; skipped: { line: string; reason: string }[] } | null = null;
 	isJson = false;
 	importCategories: Category[] | null = null;
+	importSettings: Partial<AIAliasSettings> | null = null;
 	importBtn!: HTMLButtonElement;
 	importLabel!: HTMLElement;
 	previewEl!: HTMLElement;
@@ -1025,6 +1374,7 @@ class ImportModal extends Modal {
 				}
 				this.isJson = true;
 				this.importCategories = json.categories;
+				this.importSettings = json.settings;
 				this.preview = { valid, skipped };
 				this.renderPreview();
 				return;
@@ -1033,6 +1383,7 @@ class ImportModal extends Modal {
 		// ---- legacy line-based format: real=code ----
 		this.isJson = false;
 		this.importCategories = null;
+		this.importSettings = null;
 		const raw = this.taEl.value.split(/\r?\n/);
 		const valid: { real: string; code: string; category: string | null; manual: boolean }[] = [];
 		const skipped: { line: string; reason: string }[] = [];
@@ -1068,7 +1419,11 @@ class ImportModal extends Modal {
 
 	// Recognize the exportMappings() JSON output (full AIAliasSettings or a
 	// bare mappings array) and normalize it into import-ready rows.
-	private tryParseJSON(text: string): { mappings: { real: string; code: string; category: string | null; manual: boolean }[]; categories: Category[] | null } | null {
+	private tryParseJSON(text: string): {
+		mappings: { real: string; code: string; category: string | null; manual: boolean }[];
+		categories: Category[] | null;
+		settings: Partial<AIAliasSettings> | null;
+	} | null {
 		let obj: unknown;
 		try {
 			obj = JSON.parse(text);
@@ -1088,10 +1443,30 @@ class ImportModal extends Modal {
 				return null;
 			}
 		}
+		const rec = obj as Record<string, unknown>;
 		const cats: Category[] | null =
-			!Array.isArray(obj) && Array.isArray((obj as Record<string, unknown>).categories)
-				? ((obj as Record<string, unknown>).categories as Category[])
-				: null;
+			!Array.isArray(obj) && Array.isArray(rec.categories) ? (rec.categories as Category[]) : null;
+		// global settings carried by a full export (object form only)
+		let settings: Partial<AIAliasSettings> | null = null;
+		if (!Array.isArray(obj) && typeof obj === 'object') {
+			const s: Partial<AIAliasSettings> = {};
+			if (typeof rec.prefix === 'string' && rec.prefix) s.prefix = rec.prefix;
+			if (typeof rec.suffix === 'string' && rec.suffix) s.suffix = rec.suffix;
+			if (rec.language === 'en' || rec.language === 'zh') s.language = rec.language;
+			if (typeof rec.batchIncludeSubfolders === 'boolean') s.batchIncludeSubfolders = rec.batchIncludeSubfolders;
+			if (rec.batchBareCodePolicy === 'skip' || rec.batchBareCodePolicy === 'confirmAll' || rec.batchBareCodePolicy === 'restoreAll') s.batchBareCodePolicy = rec.batchBareCodePolicy;
+			if (typeof rec.batchRenameTitles === 'boolean') s.batchRenameTitles = rec.batchRenameTitles;
+			if (typeof rec.batchSkipFrontmatter === 'boolean') s.batchSkipFrontmatter = rec.batchSkipFrontmatter;
+			if (typeof rec.batchBackupEnabled === 'boolean') s.batchBackupEnabled = rec.batchBackupEnabled;
+			if (typeof rec.batchBackupKeep === 'number' && rec.batchBackupKeep > 0) s.batchBackupKeep = Math.floor(rec.batchBackupKeep);
+			if (typeof rec.pasteUnmaskMode === 'string' && (rec.pasteUnmaskMode === 'alwaysAsk' || rec.pasteUnmaskMode === 'alwaysRestore' || rec.pasteUnmaskMode === 'neverRestore')) {
+				s.pasteUnmaskMode = rec.pasteUnmaskMode;
+			} else if (typeof rec.pasteUnmask === 'boolean') {
+				// legacy export fallback
+				s.pasteUnmaskMode = rec.pasteUnmask ? 'alwaysRestore' : 'neverRestore';
+			}
+			settings = Object.keys(s).length > 0 ? s : null;
+		}
 		const norm = (v: string | null): string | null =>
 			v === FILTER_UNCAT || v === FILTER_ALL || !v ? null : v;
 		const mappings: { real: string; code: string; category: string | null; manual: boolean }[] = [];
@@ -1120,7 +1495,7 @@ class ImportModal extends Modal {
 			const manual = typeof m.manual === 'boolean' ? m.manual : catRaw === null;
 			mappings.push({ real, code: codeRaw, category: norm(catRaw), manual });
 		}
-		return { mappings, categories: cats };
+		return { mappings, categories: cats, settings };
 	}
 
 	private renderPreview(): void {
@@ -1167,7 +1542,8 @@ class ImportModal extends Modal {
 		if (!this.preview) return;
 		const { valid } = this.preview;
 		const hasCats = !!this.importCategories && this.importCategories.length > 0;
-		if (valid.length === 0 && !hasCats) return;
+		const hasSettings = !!this.importSettings && Object.keys(this.importSettings).length > 0;
+		if (valid.length === 0 && !hasCats && !hasSettings) return;
 		if (this.mode === 'overwrite') {
 			this.plugin.settings.mappings = [];
 			if (this.importCategories) this.plugin.settings.categories = this.importCategories.slice();
@@ -1184,13 +1560,74 @@ class ImportModal extends Modal {
 		const n = valid.length;
 		let msg: string = this.mode === 'overwrite' ? t('imported').replace('%d', String(n)) : t('importMergeOk').replace('%d', String(n));
 		if (hasCats) msg += t('importCatApplied').replace('%c', String(this.importCategories!.length));
-		new Notice(msg);
-		this.tab.renderTable();
-		this.close();
+		const finish = (): void => {
+			new Notice(msg);
+			this.tab.renderTable();
+			this.close();
+		};
+		if (hasSettings) {
+			new ConfirmDialog(this.app, t('importSettingsMsg'), t('importSettingsApply'), t('cancel'), () => {
+				Object.assign(this.plugin.settings, this.importSettings!);
+				void this.plugin.save();
+				this.plugin.updatePasteStatus();
+				finish();
+			}).open();
+			return;
+		}
+		this.plugin.updatePasteStatus();
+		finish();
 	}
 
 	onClose(): void {
 		this.contentEl.empty();
+	}
+}
+
+class ExportModal extends Modal {
+	plugin: AIAliasPlugin;
+	json: string;
+
+	constructor(app: App, plugin: AIAliasPlugin, json: string) {
+		super(app);
+		this.plugin = plugin;
+		this.json = json;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		const t = (k: string): string => this.plugin.t(k);
+		this.titleEl.setText(t('exportTitle'));
+		contentEl.createEl('p', { cls: 'ai-sub', text: t('exportDesc') });
+		const foot = contentEl.createEl('div', { cls: 'ai-foot' });
+		foot.createEl('button', { text: t('cancel') }).addEventListener('click', () => this.close());
+		foot.createEl('button', { text: t('exportCopy') }).addEventListener('click', () => {
+			void navigator.clipboard
+				.writeText(this.json)
+				.then(() => new Notice(this.plugin.t('exportDone')))
+				.catch((e) => new Notice(this.plugin.t('copyFail') + (e instanceof Error ? e.message : String(e))));
+			this.close();
+		});
+		foot.createEl('button', { text: t('exportDownload'), cls: 'mod-cta' }).addEventListener('click', () => {
+			try {
+				const blob = new Blob([this.json], { type: 'application/json' });
+				const url = URL.createObjectURL(blob);
+				const a = document.createElement('a');
+				a.href = url;
+				a.download = 'ai-alias-settings.json';
+				document.body.appendChild(a);
+				a.click();
+				document.body.removeChild(a);
+				setTimeout(() => URL.revokeObjectURL(url), 1500);
+				new Notice(this.plugin.t('exportDownloaded'));
+			} catch (e) {
+				// mobile often blocks file downloads → fall back to clipboard
+				void navigator.clipboard
+					.writeText(this.json)
+					.then(() => new Notice(this.plugin.t('exportDone')))
+					.catch((e2) => new Notice(this.plugin.t('copyFail') + (e2 instanceof Error ? e2.message : String(e2))));
+			}
+			this.close();
+		});
 	}
 }
 
@@ -1240,11 +1677,11 @@ class BareCodeConfirmModal extends Modal {
 		this.isSelection = isSelection;
 		this.original = original;
 		this.hits = hits;
-		this.checks = hits.map(() => true); // default: all checked
+		this.checks = hits.map(() => true); // default: all checked (product decision: keep select-all default)
 		this.file = file;
 		this.title = file ? file.basename : '';
 		this.titleHits = titleHits;
-		this.titleChecks = titleHits.map(() => true); // default: all checked (user choice)
+		this.titleChecks = titleHits.map(() => true); // default: all checked (product decision: keep select-all default)
 	}
 
 	onOpen(): void {
@@ -1264,19 +1701,34 @@ class BareCodeConfirmModal extends Modal {
 		);
 		contentEl.createEl('p', { cls: 'ai-help', text: t('bareWarn') });
 
+		// master "select all" checkbox — placed before the note-body section.
+		// Controls every bare-code checkbox (body + title). Default checked = select all;
+		// clicking again clears all. Bare-code selection never blocks normal conversion.
+		if (this.hits.length > 0 || this.titleHits.length > 0) {
+			const selRow = contentEl.createEl('div', { cls: 'ai-selall-row' });
+			this.masterCb = selRow.createEl('input', { type: 'checkbox' });
+			this.masterCb.id = 'ai-bare-master';
+			this.masterCb.checked = true;
+			const ml = selRow.createEl('label', { cls: 'ai-selall-label', attr: { for: this.masterCb.id } });
+			ml.setText(t('bareSelectAll'));
+			this.masterCb.addEventListener('change', () => this.setAll(this.masterCb.checked));
+		}
+
 		if (this.hits.length > 0) {
 			contentEl.createEl('p', { cls: 'ai-sub ai-context-label', text: t('bareBodySection') });
 			const list = contentEl.createEl('div', { cls: 'ai-barelist' });
 			this.hits.forEach((h, i) => {
 				const row = list.createEl('div', { cls: 'ai-bareitem' });
 				const cb = row.createEl('input', { type: 'checkbox' });
-				cb.checked = true;
+				cb.id = 'ai-bare-cb-' + i;
+				cb.setAttribute('aria-label', t('bareCbAria').replace('%c', h.code).replace('%r', h.real));
+				cb.checked = this.checks[i];
 				cb.addEventListener('change', () => {
 					this.checks[i] = cb.checked;
 					this.refreshFooter();
 				});
 				this.checkEls.push(cb);
-				const body = row.createEl('div', { cls: 'ai-barebody' });
+				const body = row.createEl('label', { cls: 'ai-barebody', attr: { for: cb.id } });
 				const codeLine = body.createEl('div', { cls: 'ai-barecode' });
 				codeLine.createEl('span', { text: h.code, cls: 'ai-code' });
 				codeLine.createEl('span', { text: '  →  ', cls: 'ai-arrow' });
@@ -1295,13 +1747,15 @@ class BareCodeConfirmModal extends Modal {
 			this.titleHits.forEach((h, i) => {
 				const row = list.createEl('div', { cls: 'ai-bareitem' });
 				const cb = row.createEl('input', { type: 'checkbox' });
+				cb.id = 'ai-bare-titlecb-' + i;
+				cb.setAttribute('aria-label', t('bareCbAria').replace('%c', h.code).replace('%r', h.real));
 				cb.checked = this.titleChecks[i];
 				cb.addEventListener('change', () => {
 					this.titleChecks[i] = cb.checked;
 					this.refreshFooter();
 				});
 				this.titleCheckEls.push(cb);
-				const body = row.createEl('div', { cls: 'ai-barebody' });
+				const body = row.createEl('label', { cls: 'ai-barebody', attr: { for: cb.id } });
 				const codeLine = body.createEl('div', { cls: 'ai-barecode' });
 				codeLine.createEl('span', { text: h.code, cls: 'ai-code' });
 				codeLine.createEl('span', { text: '  →  ', cls: 'ai-arrow' });
@@ -1311,15 +1765,14 @@ class BareCodeConfirmModal extends Modal {
 		}
 
 		const foot = contentEl.createEl('div', { cls: 'ai-foot' });
-		const selAll = foot.createEl('button', { text: t('bareSelectAll') });
-		selAll.addEventListener('click', () => this.setAll(true));
-		const selNone = foot.createEl('button', { text: t('bareSelectNone') });
-		selNone.addEventListener('click', () => this.setAll(false));
+		const normalOnly = foot.createEl('button', { text: t('bareNormalOnly') });
+		normalOnly.addEventListener('click', () => this.doReplaceOnlyNormal());
 		foot.createEl('button', { text: t('cancel') }).addEventListener('click', () => this.close());
 		this.replaceBtn = foot.createEl('button', { text: t('bareReplace').replace('%d', String(total)), cls: 'mod-cta' });
 		this.replaceBtn.addEventListener('click', () => {
 			void this.doReplace();
 		});
+		this.refreshFooter();
 	}
 
 	private renderContext(parent: HTMLElement, h: BareHit, original: string): void {
@@ -1350,6 +1803,15 @@ class BareCodeConfirmModal extends Modal {
 	private refreshFooter(): void {
 		const n = this.checks.filter(Boolean).length + this.titleChecks.filter(Boolean).length;
 		this.replaceBtn.setText(this.plugin.t('bareReplace').replace('%d', String(n)));
+		// "Replace selected" stays enabled at 0: it then commits the normal (wrapped)
+		// conversions and simply skips bare codes, so bare selection never blocks the
+		// primary code→real-name action.
+		const allChecked = this.checks.every(Boolean) && this.titleChecks.every(Boolean);
+		const anyChecked = this.checks.some(Boolean) || this.titleChecks.some(Boolean);
+		if (this.masterCb) {
+			this.masterCb.checked = allChecked;
+			this.masterCb.indeterminate = !allChecked && anyChecked;
+		}
 	}
 
 	private async doReplace(): Promise<void> {
@@ -1368,7 +1830,29 @@ class BareCodeConfirmModal extends Modal {
 		}
 		out += this.original.slice(cursor);
 		if (this.isSelection) this.editor.replaceSelection(out);
-		else this.editor.setValue(out);
+		else {
+			// whole-note: keep the caret on the same line / same visual column
+			// after the rewrite (#16, revised). The transform mirrors doReplace's
+			// body rebuild so the caret maps to the exact new position.
+			const cur = this.editor.getCursor();
+			const oldText = this.editor.getValue();
+			this.editor.setValue(out);
+			const transform = (s: string): string => {
+				const d = this.plugin.decrypt(s);
+				let res = '';
+				let c = 0;
+				for (let i = 0; i < this.hits.length; i++) {
+					const h = this.hits[i];
+					if (h.start >= d.length) break;
+					res += d.slice(c, h.start);
+					res += this.checks[i] ? h.real : d.slice(h.start, h.end);
+					c = h.end;
+				}
+				res += d.slice(c);
+				return res;
+			};
+			this.editor.setCursor(this.plugin.clampCursor(this.plugin.mapCursorByTransform(oldText, transform, cur), out));
+		}
 
 		// ---- title rename (file operation) ----
 		let titleMsg: string | null = null;
@@ -1415,8 +1899,27 @@ class BareCodeConfirmModal extends Modal {
 		this.close();
 	}
 
-	replaceBtn!: HTMLElement;
-}
+		replaceBtn!: HTMLButtonElement;
+		masterCb!: HTMLInputElement;
+
+		// Commit ONLY the normal (wrapped) conversions and skip every bare code.
+		// This guarantees the bare-code dialog never blocks the primary
+		// code→real-name action: even with zero bare codes selected, the wrapped
+		// aliases are still restored.
+		private doReplaceOnlyNormal(): void {
+			if (this.isSelection) this.editor.replaceSelection(this.original);
+			else {
+				const cur = this.editor.getCursor();
+				const oldText = this.editor.getValue();
+				this.editor.setValue(this.original);
+				this.editor.setCursor(
+					this.plugin.clampCursor(this.plugin.mapCursorByTransform(oldText, (s) => this.plugin.decrypt(s), cur), this.original)
+				);
+			}
+			new Notice(this.plugin.t('decrypted'));
+			this.close();
+		}
+	}
 
 // ---------------- v1.7.0 batch preview / confirmation modal ----------------
 
@@ -1433,6 +1936,7 @@ class BatchPreviewModal extends Modal {
 	private listEl!: HTMLElement;
 	private infoEl!: HTMLElement;
 	private runBtn!: HTMLButtonElement;
+	private selAllList!: HTMLInputElement;
 
 	constructor(app: App, plugin: AIAliasPlugin, direction: BatchDirection, label: string, scans: BatchScan[]) {
 		super(app);
@@ -1512,9 +2016,13 @@ class BatchPreviewModal extends Modal {
 			pol.createDiv('ai-bppolicy-warn').setText(t('bpRenameWarn'));
 		}
 
-		// File list section
+		// File list section (select-all checkbox sits in the section header)
 		const listWrap = contentEl.createDiv('ai-bplistwrap');
-		listWrap.createDiv('ai-bpsectitle').setText(t('bpFileListTitle') || '\u6587\u4ef6\u6e05\u5355');
+		const listHead = listWrap.createDiv('ai-bpsectitle');
+		this.selAllList = listHead.createEl('input', { type: 'checkbox', cls: 'ai-cbx', title: t('bpSelAll') });
+		this.selAllList.checked = true; // default: all selected
+		this.selAllList.addEventListener('change', () => this.setAll(this.selAllList.checked));
+		listHead.createSpan({ text: t('bpFileListTitle') || '\u6587\u4ef6\u6e05\u5355' });
 		this.listEl = listWrap.createDiv('ai-bplist');
 
 		// Info bar (purple)
@@ -1525,8 +2033,6 @@ class BatchPreviewModal extends Modal {
 		const foot = contentEl.createEl('div', { cls: 'ai-foot' });
 		foot.createSpan({ text: '', cls: 'ai-bpfoodsel' });
 		foot.createEl('button', { text: t('cancel') }).addEventListener('click', () => this.close());
-		foot.createEl('button', { text: t('bpSelAll') }).addEventListener('click', () => this.setAll(true));
-		foot.createEl('button', { text: t('bpSelNone') }).addEventListener('click', () => this.setAll(false));
 		this.runBtn = foot.createEl('button', { text: '', cls: 'mod-cta' });
 		this.runBtn.addEventListener('click', () => this.confirmRun());
 
@@ -1705,10 +2211,26 @@ class BatchPreviewModal extends Modal {
 		}
 		const selTotal = this.scans.filter((s) => s.selected).length;
 		const totalScans = this.scans.length;
-		const infoText = (t('bpInfoBarFmt') || '\u64cd\u4f5c\u5c06\u4fee\u6539 %d \u4e2a\u6587\u4ef6\uff0c\u5df2\u81ea\u52a8\u521b\u5efa\u5feb\u7167\uff0c\u53ef\u968f\u65f6\u64a4\u9500\u3002').replace('%d', String(files));
-		if (this.infoEl) this.infoEl.setText(infoText);
+		const backupOn = this.plugin.settings.batchBackupEnabled;
+		let infoText: string;
+		if (backupOn) {
+			infoText = (t('bpInfoBarFmt') || '\u64cd\u4f5c\u5c06\u4fee\u6539 %d \u4e2a\u6587\u4ef6\uff0c\u5df2\u81ea\u52a8\u521b\u5efa\u5feb\u7167\uff0c\u53ef\u968f\u65f6\u64a4\u9500\u3002').replace('%d', String(files));
+		} else {
+			infoText = (t('bpInfoBarNoBackup') || '\u5feb\u7167\u5df2\u5173\u95ed\uff1a\u5c06\u4fee\u6539 %d \u4e2a\u6587\u4ef6\uff0c\u4e14\u4e0d\u53ef\u56de\u6eda\uff01').replace('%d', String(files));
+		}
+		if (this.infoEl) {
+			this.infoEl.setText(infoText);
+			if (backupOn) this.infoEl.removeClass('ai-bpwarn');
+			else this.infoEl.addClass('ai-bpwarn');
+		}
 		const selLabel = this.modalEl.querySelector('.ai-bpfoodsel');
 		if (selLabel) selLabel.setText((t('bpSelected') || '\u5df2\u9009 %d / %d \u4e2a\u6587\u4ef6').replace('%d', String(selTotal)).replace('%d', String(totalScans)));
+		// keep the header select-all checkbox in sync (checked / indeterminate / unchecked)
+		const potScans = this.scans.filter((s) => this.hasPotential(s));
+		if (this.selAllList) {
+			this.selAllList.checked = potScans.length > 0 && potScans.every((s) => s.selected);
+			this.selAllList.indeterminate = potScans.length > 0 && !this.selAllList.checked && potScans.some((s) => s.selected);
+		}
 		const runLabel = this.direction === 'encrypt'
 			? (t('bpRunEnc') || '\u6267\u884c\u52a0\u5bc6\uff08%d \u7bc7\uff09')
 			: (t('bpRunDec') || '\u6267\u884c\u89e3\u5bc6\uff08%d \u7bc7\uff09');
@@ -1916,6 +2438,7 @@ class AIAliasSettingTab extends PluginSettingTab {
 	private addHintEl!: HTMLElement;
 	private filterSel!: HTMLSelectElement;
 	private catBarEl!: HTMLElement;
+	private delSelBtn!: HTMLButtonElement;
 
 	constructor(app: App, plugin: AIAliasPlugin) {
 		super(app, plugin);
@@ -1943,30 +2466,32 @@ class AIAliasSettingTab extends PluginSettingTab {
 			dd.addOption('en', 'English').addOption('zh', '中文').setValue(this.plugin.settings.language).onChange(async (v) => {
 				this.plugin.settings.language = v as 'en' | 'zh';
 				await this.plugin.save();
+				this.plugin.reregisterCommands();
 				this.refreshSettings();
 			});
 		});
 		new Setting(secGeneral)
-			.setName(t('pasteUnmask'))
-			.setDesc(t('pasteUnmaskDesc'))
-			.addToggle((tg) => tg.setValue(this.plugin.settings.pasteUnmask).onChange(async (v) => {
-				this.plugin.settings.pasteUnmask = v;
-				await this.plugin.save();
-			}));
+			.setName(t('pasteMode'))
+			.setDesc(t('pasteModeDesc'))
+			.addDropdown((dd) => {
+				dd.addOption('alwaysAsk', t('pasteModeAsk'))
+					.addOption('alwaysRestore', t('pasteModeAlways'))
+					.addOption('neverRestore', t('pasteModeNever'))
+					.setValue(this.plugin.settings.pasteUnmaskMode)
+					.onChange(async (v) => {
+						this.plugin.settings.pasteUnmaskMode = v as 'alwaysAsk' | 'alwaysRestore' | 'neverRestore';
+						await this.plugin.save();
+						this.plugin.updatePasteStatus();
+					});
+			});
 		const wrapRow = secGeneral.createDiv('ai-v2-wraprow');
 		wrapRow.createDiv('ai-v2-wraplabel').setText(t('prefix') + ' / ' + t('suffix'));
 		const wrapInputs = wrapRow.createDiv('ai-v2-wrapinputs');
 		const preInp = wrapInputs.createEl('input', { type: 'text', value: this.plugin.settings.prefix, cls: 'ai-v2-pre' });
-		preInp.addEventListener('change', () => {
-			this.plugin.settings.prefix = preInp.value || '[[';
-			void this.plugin.save();
-		});
+		preInp.addEventListener('change', () => this.onWrapperChange(preInp, 'prefix'));
 		wrapInputs.createSpan({ text: ' ' + t('realName') + ' ', cls: 'ai-v2-wrapmid' });
 		const sufInp = wrapInputs.createEl('input', { type: 'text', value: this.plugin.settings.suffix, cls: 'ai-v2-suf' });
-		sufInp.addEventListener('change', () => {
-			this.plugin.settings.suffix = sufInp.value || ']]';
-			void this.plugin.save();
-		});
+		sufInp.addEventListener('change', () => this.onWrapperChange(sufInp, 'suffix'));
 
 		// ===== Sec_分类与映射 (Categories & Mappings combined) =====
 		const secCatMap = body.createDiv('ai-v2-section');
@@ -2016,7 +2541,11 @@ class AIAliasSettingTab extends PluginSettingTab {
 			this.plugin.settings.batchBackupEnabled = v;
 			await this.plugin.save();
 		}));
-		new Setting(secBatch).setName(t('batchBackupKeepName')).setDesc(t('batchBackupKeepDesc')).addText((tx) => {
+		const keepDesc = document.createDocumentFragment();
+		keepDesc.appendText(t('batchBackupKeepDesc1'));
+		keepDesc.appendChild(document.createElement('br'));
+		keepDesc.appendText(t('batchBackupKeepDesc2'));
+		new Setting(secBatch).setName(t('batchBackupKeepName')).setDesc(keepDesc).addText((tx) => {
 			tx.setValue(String(this.plugin.settings.batchBackupKeep));
 			tx.inputEl.type = 'number';
 			tx.inputEl.min = '1';
@@ -2030,12 +2559,6 @@ class AIAliasSettingTab extends PluginSettingTab {
 			});
 		});
 
-		// ===== Sec_数据管理 (Data management) - import/export =====
-		const secData = body.createDiv('ai-v2-section');
-		secData.id = 'sec-data';
-		new Setting(secData).setName(t('navData')).setHeading();
-		new Setting(secData).setName(t('exportBtn')).setDesc(t('importExportDesc')).addButton((b) => b.setButtonText(t('exportBtn')).onClick(() => this.exportMappings()));
-		new Setting(secData).setName(t('importBtn')).setDesc(t('importExportDesc')).addButton((b) => b.setButtonText(t('importBtn')).onClick(() => new ImportModal(this.app, this.plugin, this).open()));
 	}
 
 	getSettingDefinitions(): SettingDefinitionItem[] {
@@ -2056,12 +2579,19 @@ class AIAliasSettingTab extends PluginSettingTab {
 		this.update();
 	}
 
+	// Wrapper (prefix/suffix) change guard: never break existing notes silently.
+	private onWrapperChange(input: HTMLInputElement, which: 'prefix' | 'suffix'): void {
+		const oldP = this.plugin.settings.prefix;
+		const oldS = this.plugin.settings.suffix;
+		const newP = which === 'prefix' ? (input.value || '[[') : oldP;
+		const newS = which === 'suffix' ? (input.value || ']]') : oldS;
+		if (newP === oldP && newS === oldS) return; // no real change
+		new WrapperChangeModal(this.app, this.plugin, oldP, oldS, newP, newS, input, which === 'prefix' ? oldP : oldS).open();
+	}
+
 	private exportMappings(): void {
-		const t = (k: string): string => this.plugin.t(k);
-		void navigator.clipboard
-			.writeText(JSON.stringify(this.plugin.settings, null, 2))
-			.then(() => new Notice(t('prefixCopied')))
-			.catch((e) => new Notice(t('copyFail') + (e instanceof Error ? e.message : String(e))));
+		const json = JSON.stringify(this.plugin.settings, null, 2);
+		new ExportModal(this.app, this.plugin, json).open();
 	}
 
 	buildMappingUI(container: HTMLElement): void {
@@ -2090,11 +2620,22 @@ class AIAliasSettingTab extends PluginSettingTab {
 		addB.addEventListener('click', () => this.toggleAddForm());
 		const batchB = leftGrp.createEl('button', { text: '+ ' + t('batchAdd') });
 		batchB.addEventListener('click', () => new BatchAddModal(this.app, this.plugin, this).open());
+		const smartB = leftGrp.createEl('button', { text: t('smartCat') });
+		smartB.addEventListener('click', () => {
+			const { done, remain } = this.plugin.categorizeSmart();
+			void this.plugin.save();
+			this.renderTable();
+			new Notice(t('smartCatDone').replace('%d', String(done)).replace('%d', String(remain)));
+		});
 		const rightGrp = btnBar.createEl('div', { cls: 'ai-btns-right' });
 		const importB = rightGrp.createEl('button', { text: t('toolImport') });
 		importB.addEventListener('click', () => new ImportModal(this.app, this.plugin, this).open());
 		const exportB = rightGrp.createEl('button', { text: t('toolExport') });
 		exportB.addEventListener('click', () => this.exportMappings());
+		this.delSelBtn = rightGrp.createEl('button', { text: t('delSel') + ' (0)' });
+		this.delSelBtn.addEventListener('click', () => this.deleteSelected());
+		const clearB = rightGrp.createEl('button', { text: t('clearAll') });
+		clearB.addEventListener('click', () => this.clearAll());
 
 		this.addFormEl = container.createEl('div', { cls: 'ai-addform is-hidden' });
 		const r1 = this.addFormEl.createEl('div', { cls: 'ai-frow' });
@@ -2118,11 +2659,15 @@ class AIAliasSettingTab extends PluginSettingTab {
 		this.addCodeEl.addEventListener('keydown', (e) => {
 			if (e.key === 'Enter') {
 				e.preventDefault();
-				this.saveInlineAdd();
+				// Enter in the code field keeps the form open for the next entry
+				this.saveInlineAdd(true);
 			}
 		});
 		const rAct = this.addFormEl.createEl('div', { cls: 'ai-frow ai-frow-act' });
-		rAct.createEl('button', { text: t('addSave'), cls: 'mod-cta' }).addEventListener('click', () => this.saveInlineAdd());
+		const saveBtn = rAct.createEl('button', { text: t('addSave'), cls: 'mod-cta' });
+		saveBtn.addEventListener('click', () => this.saveInlineAdd(false));
+		const contBtn = rAct.createEl('button', { text: t('addContinuous') });
+		contBtn.addEventListener('click', () => this.saveInlineAdd(true));
 		rAct.createEl('button', { text: t('cancel') }).addEventListener('click', () => this.toggleAddForm(true));
 		this.addHintEl = this.addFormEl.createEl('div', { cls: 'ai-hint' });
 
@@ -2251,6 +2796,17 @@ class AIAliasSettingTab extends PluginSettingTab {
 		}
 	}
 
+	private setSort(key: 'real' | 'code'): void {
+		if (this.sortKey === key) {
+			this.sortDir = this.sortDir === 1 ? -1 : 1;
+		} else {
+			this.sortKey = key;
+			this.sortDir = 1;
+		}
+		this.page = 0;
+		this.renderTable();
+	}
+
 	private filteredMappings(): { real: string; code: string; category?: string | null; manual?: boolean; i: number }[] {
 		let list = this.plugin.settings.mappings.map((m, i) => ({
 			real: m.real,
@@ -2306,8 +2862,12 @@ class AIAliasSettingTab extends PluginSettingTab {
 			else pageItems.forEach((m) => this.selected.delete(m.i));
 			this.renderTable();
 		});
-		htr.createEl('th', { text: t('thReal') });
-		htr.createEl('th', { text: t('thCode'), cls: 'ai-col-code' });
+		const thReal = htr.createEl('th', { cls: 'ai-sortable' + (this.sortKey === 'real' ? ' is-sorted' : '') });
+		thReal.setText((this.sortKey === 'real' ? (this.sortDir === 1 ? '▲ ' : '▼ ') : '') + t('thReal'));
+		thReal.addEventListener('click', () => this.setSort('real'));
+		const thCode = htr.createEl('th', { cls: 'ai-col-code ai-sortable' + (this.sortKey === 'code' ? ' is-sorted' : '') });
+		thCode.setText((this.sortKey === 'code' ? (this.sortDir === 1 ? '▲ ' : '▼ ') : '') + t('thCode'));
+		thCode.addEventListener('click', () => this.setSort('code'));
 		htr.createEl('th', { text: t('thCat'), cls: 'ai-col-cat' });
 		htr.createEl('th', { text: t('actions'), cls: 'ai-col-act' });
 
@@ -2317,6 +2877,7 @@ class AIAliasSettingTab extends PluginSettingTab {
 			const td = tr.createEl('td', { text: t('empty') });
 			td.setAttribute('colspan', '5');
 			td.addClass('ai-empty');
+			this.refreshSelButtons();
 			this.renderPager(this.plugin.settings.mappings.length, pages);
 			return;
 		}
@@ -2327,6 +2888,7 @@ class AIAliasSettingTab extends PluginSettingTab {
 			const td = tr.createEl('td', { text: t('filteredEmpty') });
 			td.setAttribute('colspan', '5');
 			td.addClass('ai-empty');
+			this.refreshSelButtons();
 			this.renderPager(this.plugin.settings.mappings.length, pages);
 			return;
 		}
@@ -2341,19 +2903,19 @@ class AIAliasSettingTab extends PluginSettingTab {
 				if (checked) this.selected.add(m.i);
 				else this.selected.delete(m.i);
 				tr.toggleClass('ai-sel', checked);
+				this.refreshSelButtons();
 			});
 			if (this.editing === m.i) {
 				const tdReal = tr.createEl('td', { cls: 'ai-col-real' });
 				const inR = tdReal.createEl('input', { type: 'text', cls: 'ai-mreal-edit', value: m.real });
 				const tdCode = tr.createEl('td', { cls: 'ai-col-code' });
-				const fullCodeE = this.plugin.wrap(m.code);
-				tdCode.createEl('code', { text: fullCodeE, cls: 'ai-mcode', title: fullCodeE });
+				const inC = tdCode.createEl('input', { type: 'text', cls: 'ai-mcode-edit', value: m.code });
 				const tdCat = tr.createEl('td', { cls: 'ai-col-cat' });
 				const sel = tdCat.createEl('select', { cls: 'ai-cat-sel' });
 				this.fillCatSelect(sel, false, m.category || '');
 				const tdAct = tr.createEl('td', { cls: 'ai-col-act' });
-				const saveBtn = tdAct.createEl('button', { cls: 'ai-act ai-act-edit', text: t('addSave') });
-				saveBtn.addEventListener('click', () => this.saveEdit(m.i, inR.value, sel.value));
+				const saveBtn = tdAct.createEl('button', { cls: 'ai-act ai-act-edit', text: t('save') });
+				saveBtn.addEventListener('click', () => this.saveEdit(m.i, inR.value, sel.value, inC.value));
 				const cancelBtn = tdAct.createEl('button', { cls: 'ai-act ai-act-cancel', text: t('cancel') });
 				cancelBtn.addEventListener('click', () => {
 					this.editing = null;
@@ -2432,7 +2994,7 @@ class AIAliasSettingTab extends PluginSettingTab {
 		this.addHintEl.className = 'ai-hint ai-err';
 	}
 
-	private saveInlineAdd(): void {
+	private saveInlineAdd(keepOpen: boolean): void {
 		const t = (k: string): string => this.plugin.t(k);
 		const real = this.addRealEl.value.trim();
 		const catId = this.addCatEl.value;
@@ -2452,7 +3014,7 @@ class AIAliasSettingTab extends PluginSettingTab {
 			}
 			this.plugin.settings.mappings.push({ real, code: codeVal, category: this.normCat(catId), manual: this.codeTouched });
 			void this.plugin.save();
-			this.afterAdd(codeVal);
+			this.afterAdd(codeVal, keepOpen);
 		} else {
 			const cat = this.plugin.categoryById(catId);
 			if (!cat) {
@@ -2462,19 +3024,27 @@ class AIAliasSettingTab extends PluginSettingTab {
 			const code = this.plugin.generateCode(cat);
 			this.plugin.settings.mappings.push({ real, code, category: cat.id, manual: false });
 			void this.plugin.save();
-			this.afterAdd(code);
+			this.afterAdd(code, keepOpen);
 		}
 	}
 
-	private afterAdd(code: string): void {
+	private afterAdd(code: string, keepOpen: boolean): void {
 		new Notice(this.plugin.t('added') + this.plugin.wrap(code));
-		// Collapse the inline "add mapping" form after a successful add so its
-		// controls are auto-hidden (the user must reopen it to add another).
-		this.toggleAddForm(true);
+		if (keepOpen) {
+			// "连续新增": keep the form open, clear the real name and prefill
+			// the next generated alias so several entries can be added quickly
+			this.addRealEl.value = '';
+			this.codeTouched = false;
+			this.updateAutoPreview();
+			this.addRealEl.focus();
+		} else {
+			// single add: collapse the inline form after a successful add
+			this.toggleAddForm(true);
+		}
 		this.renderTable();
 	}
 
-	private saveEdit(i: number, realRaw: string, catId: string): void {
+	private saveEdit(i: number, realRaw: string, catId: string, codeRaw: string): void {
 		const t = (k: string): string => this.plugin.t(k);
 		const real = realRaw.trim();
 		if (!real) {
@@ -2482,17 +3052,60 @@ class AIAliasSettingTab extends PluginSettingTab {
 			return;
 		}
 		const old = this.plugin.settings.mappings[i];
-		let code = old.code;
-		const manual = !!old.manual;
-		if (!manual && catId !== (old.category || '')) {
-			const cat = this.plugin.categoryById(catId);
-			if (cat) code = this.plugin.generateCode(cat);
+		const manualOld = !!old.manual;
+		const catChanged = catId !== (old.category || '');
+		const typed = (codeRaw ?? '').trim().toUpperCase();
+		const typedChanged = typed !== old.code;
+
+		const finalize = (code: string, manual: boolean): void => {
+			this.plugin.settings.mappings[i] = { real, code, category: this.normCat(catId), manual };
+			this.editing = null;
+			void this.plugin.save();
+			new Notice(t('edited'));
+			this.renderTable();
+		};
+
+		// user typed a different alias → validate and apply as a manual override
+		if (typedChanged) {
+			if (!typed) {
+				// field cleared → keep the current alias
+				finalize(old.code, manualOld);
+				return;
+			}
+			if (!isValidCode(typed)) {
+				new Notice(t('errInvalid') + typed);
+				return;
+			}
+			if (this.codeTaken(typed, i)) {
+				new Notice(t('errDuplicate') + typed);
+				return;
+			}
+			finalize(typed, true);
+			return;
 		}
-		this.plugin.settings.mappings[i] = { real, code, category: this.normCat(catId), manual };
-		this.editing = null;
-		void this.plugin.save();
-		new Notice(t('edited'));
-		this.renderTable();
+
+		// alias unchanged: no renumber when the category is unchanged or the alias is manual
+		if (!catChanged || manualOld) {
+			finalize(old.code, manualOld);
+			return;
+		}
+
+		// auto alias + category changed → never renumber silently
+		const cat = this.plugin.categoryById(catId);
+		const newCode = cat ? this.plugin.generateCode(cat) : old.code;
+		new RenumberModal(
+			this.app,
+			this.plugin,
+			t('editRenumberMsg').replace('%c', this.plugin.wrap(newCode)),
+			t('editRenumberYes'),
+			t('editRenumberKeep'),
+			() => finalize(newCode, false),
+			() => finalize(old.code, true)
+		).open();
+	}
+
+	private codeTaken(code: string, exceptI: number): boolean {
+		return this.plugin.settings.mappings.some((m, j) => j !== exceptI && m.code === code);
 	}
 
 	private deleteOne(i: number): void {
@@ -2506,11 +3119,51 @@ class AIAliasSettingTab extends PluginSettingTab {
 		new Notice(this.plugin.t('delOne'));
 		this.renderTable();
 	}
+
+	private refreshSelButtons(): void {
+		if (!this.delSelBtn) return;
+		const n = this.selected.size;
+		this.delSelBtn.setText(this.plugin.t('delSel') + ' (' + n + ')');
+		this.delSelBtn.disabled = n === 0;
+	}
+
+	private deleteSelected(): void {
+		if (this.selected.size === 0) return;
+		const n = this.selected.size;
+		const idxs = new Set(this.selected);
+		new ConfirmDialog(this.app, this.plugin.t('delSelConfirm').replace('%d', String(n)), this.plugin.t('delSel'), this.plugin.t('cancel'), async () => {
+			this.plugin.settings.mappings = this.plugin.settings.mappings.filter((_m, i) => !idxs.has(i));
+			this.selected.clear();
+			this.editing = null;
+			await this.plugin.save();
+			this.page = 0;
+			this.renderTable();
+			new Notice(this.plugin.t('delSelDone').replace('%d', String(n)));
+		});
+	}
+
+	private clearAll(): void {
+		if (this.plugin.settings.mappings.length === 0) return;
+		const n = this.plugin.settings.mappings.length;
+		new ConfirmDialog(this.app, this.plugin.t('clearAllConfirm').replace('%d', String(n)), this.plugin.t('clearAll'), this.plugin.t('cancel'), async () => {
+			this.plugin.settings.mappings = [];
+			this.selected.clear();
+			this.editing = null;
+			await this.plugin.save();
+			this.page = 0;
+			this.renderTable();
+			this.plugin.updatePasteStatus();
+			new Notice(this.plugin.t('clearAllDone').replace('%d', String(n)));
+		});
+	}
 }
 
 export default class AIAliasPlugin extends Plugin {
 	settings!: AIAliasSettings;
 	settingsTab!: AIAliasSettingTab;
+
+	// v1.10.0: status bar paste strategy indicator (click to cycle, hover tooltip)
+	private pasteStatusEl: HTMLElement | null = null;
 
 	t(key: string): string {
 		const lang = this.settings.language || 'en';
@@ -2552,13 +3205,31 @@ export default class AIAliasPlugin extends Plugin {
 	// Smallest unused sequence number (>=1) for the category's prefix,
 	// computed against the live mapping set. Reuses gaps left by deleted or
 	// unconfirmed codes so alias numbers stay contiguous.
+	// v1.10.x: pad width grows past 3 digits once a category exceeds 999 so
+	// codes stay fixed-width and aligned (e.g. PERSON_1000). Existing 3-digit
+	// codes remain valid — they are matched by the (\d+) regexes elsewhere,
+	// so this is backward compatible with earlier snapshots.
+	codePadWidth(cat: Category): number {
+		let maxN = 0;
+		const re = new RegExp('^' + escapeRegex(cat.prefix) + '(\\d+)$');
+		for (const m of this.settings.mappings) {
+			const mm = m.code.match(re);
+			if (mm) {
+				const n = parseInt(mm[1], 10);
+				if (n > maxN) maxN = n;
+			}
+		}
+		return Math.max(3, String(maxN).length);
+	}
+
 	peekCode(cat: Category): string {
 		const existing = new Set(this.settings.mappings.map((m) => m.code));
+		const width = this.codePadWidth(cat);
 		let seq = 0;
 		let code: string;
 		do {
 			seq += 1;
-			code = cat.prefix + String(seq).padStart(3, '0');
+			code = cat.prefix + String(seq).padStart(width, '0');
 		} while (existing.has(code));
 		return code;
 	}
@@ -2655,6 +3326,109 @@ export default class AIAliasPlugin extends Plugin {
 		this.registerEvent(
 			this.app.workspace.on('editor-paste', (evt, editor) => this.onEditorPaste(evt, editor))
 		);
+
+		// ---- v1.10.0: status bar paste strategy indicator ----
+		this.initPasteStatus();
+	}
+
+	// ============== v1.10.0: status bar paste strategy indicator ==============
+
+	private initPasteStatus(): void {
+		const el = this.addStatusBarItem();
+		el.addClass('ai-alias-paste-status');
+		el.setAttribute('role', 'button');
+		el.setAttribute('tabindex', '0');
+		const icoEl = el.createSpan({ cls: 'ai-paste-icon' });
+		icoEl.setAttribute('aria-hidden', 'true');
+		this.pasteStatusEl = el;
+
+		el.addEventListener('click', () => this.cyclePasteStatus());
+		el.addEventListener('keydown', (e: KeyboardEvent) => {
+			if (e.key === 'Enter' || e.key === ' ') {
+				e.preventDefault();
+				this.cyclePasteStatus();
+			}
+		});
+		el.addEventListener('contextmenu', (e: MouseEvent) => this.openPasteStatusMenu(e));
+
+		this.updatePasteStatus();
+	}
+
+	/** Cycle: alwaysAsk → alwaysRestore → neverRestore → alwaysAsk */
+	private cyclePasteStatus(): void {
+		const order: Array<'alwaysAsk' | 'alwaysRestore' | 'neverRestore'> = [
+			'alwaysAsk',
+			'alwaysRestore',
+			'neverRestore'
+		];
+		const cur = this.settings.pasteUnmaskMode;
+		const idx = order.indexOf(cur);
+		const next = order[(idx + 1) % order.length];
+		void this.applyPasteStatus(next);
+	}
+
+	private async applyPasteStatus(mode: 'alwaysAsk' | 'alwaysRestore' | 'neverRestore'): Promise<void> {
+		this.settings.pasteUnmaskMode = mode;
+		await this.save();
+		this.updatePasteStatus();
+		const label =
+			mode === 'alwaysAsk' ? this.t('pasteStatusAskLabel') :
+			mode === 'alwaysRestore' ? this.t('pasteStatusAutoLabel') :
+			this.t('pasteStatusOffLabel');
+		new Notice(this.t('pasteStatusSwitchedToast').replace('%s', label));
+	}
+
+	/** Public — call from settings page dropdown / doImport / clearAll to keep both sides in sync. */
+	updatePasteStatus(): void {
+		const el = this.pasteStatusEl;
+		if (!el) return;
+		const mode = this.settings.pasteUnmaskMode;
+		const hasMappings = this.settings.mappings.length > 0;
+		el.toggleClass('is-hidden', !hasMappings);
+		if (!hasMappings) return;
+		el.setAttribute('data-mode', mode);
+		const iconName =
+			mode === 'alwaysAsk' ? 'help-circle' :
+			mode === 'alwaysRestore' ? 'check-circle' :
+			'circle-slash-2';
+		const ico = el.querySelector('.ai-paste-icon');
+		if (ico) setIcon(ico as HTMLElement, iconName);
+		const tip =
+			mode === 'alwaysAsk' ? this.t('pasteStatusTooltipAsk') :
+			mode === 'alwaysRestore' ? this.t('pasteStatusTooltipAuto') :
+			this.t('pasteStatusTooltipOff');
+		// Use the native HTML `title` attribute only — Obsidian listens to
+		// `aria-label` on status-bar slots and would render its own tooltip
+		// on top of the browser's, causing duplicate hover labels.
+		el.setAttribute('title', tip);
+	}
+
+	private openPasteStatusMenu(e: MouseEvent): void {
+		e.preventDefault();
+		const menu = new Menu();
+		const mode = this.settings.pasteUnmaskMode;
+		const shortLabel =
+			mode === 'alwaysAsk' ? this.t('pasteStatusAskLabel') :
+			mode === 'alwaysRestore' ? this.t('pasteStatusAutoLabel') :
+			this.t('pasteStatusOffLabel');
+		menu.addItem((it) => it.setTitle(shortLabel).setIcon('info').setDisabled(true));
+		menu.addSeparator();
+		menu.addItem((it) =>
+			it.setTitle(this.t('pasteStatusAskLabel'))
+				.setIcon('help-circle')
+				.onClick(() => void this.applyPasteStatus('alwaysAsk'))
+		);
+		menu.addItem((it) =>
+			it.setTitle(this.t('pasteStatusAutoLabel'))
+				.setIcon('check-circle')
+				.onClick(() => void this.applyPasteStatus('alwaysRestore'))
+		);
+		menu.addItem((it) =>
+			it.setTitle(this.t('pasteStatusOffLabel'))
+				.setIcon('circle-slash-2')
+				.onClick(() => void this.applyPasteStatus('neverRestore'))
+		);
+		menu.showAtMouseEvent(e);
 	}
 
 	registerCommands(): void {
@@ -2694,6 +3468,15 @@ export default class AIAliasPlugin extends Plugin {
 				void this.undoLastBatch();
 			}
 		});
+	}
+
+	// Re-register commands with the current language. IDs stay unchanged so the
+	// user's hotkey bindings are preserved; only the visible names refresh.
+	reregisterCommands(): void {
+		for (const id of CMD_IDS) {
+			this.removeCommand(id);
+		}
+		this.registerCommands();
 	}
 
 	// ================= v1.7.0 batch operations =================
@@ -2849,9 +3632,8 @@ export default class AIAliasPlugin extends Plugin {
 			scan.decrypted = this.decrypt(content);
 			scan.bareHits = this.toCodeHits(this.scanBareCodes(scan.decrypted));
 			scan.titleHits = this.toCodeHits(this.scanBareCodes(file.basename));
-			// bare codes: default unchecked ("confirm each") unless "restore all" is selected
-			const barePolicy = this.settings.batchBareCodePolicy;
-			scan.bareChecks = scan.bareHits.map(() => barePolicy === 'restoreAll');
+			// bare codes: default checked (restore by default); uncheck any you want to keep as aliases
+			scan.bareChecks = scan.bareHits.map(() => this.settings.batchBareCodePolicy !== 'skip');
 			scan.titleChecks = scan.titleHits.map(() => false);
 		}
 		return scan;
@@ -3017,21 +3799,25 @@ export default class AIAliasPlugin extends Plugin {
 				new Notice(this.t('undoNone'));
 				return;
 			}
-			const path = cands[cands.length - 1];
-			const snap = JSON.parse(await ad.read(path)) as Snapshot;
-			const msg = this.t('undoConfirm')
-				.replace('%d', this.t(snap.direction === 'encrypt' ? 'undoDirEnc' : 'undoDirDec'))
-				.replace('%t', prettyStamp(snap.ts))
-				.replace('%n', String(snap.entries.length));
-			new ConfirmDialog(this.app, msg, this.t('undoRun'), this.t('cancel'), () => {
-				void this.applyUndo(path, snap);
-			}).open();
-		} catch (e) {
-			new Notice(this.t('undoFail') + (e instanceof Error ? e.message : String(e)));
-		}
+			const items: { path: string; snap: Snapshot }[] = [];
+			for (const path of cands) {
+				try {
+					items.push({ path, snap: JSON.parse(await ad.read(path)) as Snapshot });
+				} catch {
+					// skip corrupt snapshot files
+				}
+			}
+			if (items.length === 0) {
+				new Notice(this.t('undoNone'));
+				return;
+			}
+		new UndoBatchModal(this.app, this, items).open();
+	} catch (e) {
+		new Notice(this.t('undoFail') + (e instanceof Error ? e.message : String(e)));
 	}
+}
 
-	private async applyUndo(path: string, snap: Snapshot): Promise<void> {
+	async applyUndo(path: string, snap: Snapshot): Promise<void> {
 		let done = 0;
 		let skipped = 0;
 		let missing = 0;
@@ -3077,20 +3863,78 @@ export default class AIAliasPlugin extends Plugin {
 		return this.settings.prefix + code + this.settings.suffix;
 	}
 
-	// v1.8.0: paste auto-unmask — restores real names in pasted text when the
-	// toggle is on. We take over the paste only when the clipboard actually
-	// contains wrapped aliases, so normal pastes are untouched.
+	// v1.10.x: paste auto-unmask with three modes (alwaysAsk / alwaysRestore / neverRestore).
+	// Wrapped aliases are converted in this flow; bare aliases are surfaced
+	// for per-item confirmation in alwaysAsk and just notified in alwaysRestore.
+	// neverRestore never intercepts.
 	private onEditorPaste(evt: ClipboardEvent, editor: Editor): void {
-		if (!this.settings.pasteUnmask) return;
-		if (evt.defaultPrevented) return;
 		if (this.settings.mappings.length === 0) return;
+		if (evt.defaultPrevented) return;
 		const data = evt.clipboardData ? evt.clipboardData.getData('text/plain') : '';
 		if (!data) return;
-		const out = this.decrypt(data);
-		if (out === data) return;
+
+		// count wrapped aliases (current + previous wrapper)
+		let n = 0;
+		const lastP = this.settings.lastPrefix;
+		const lastS = this.settings.lastSuffix;
+		for (const m of this.settings.mappings) {
+			n += data.split(this.wrap(m.code)).length - 1;
+			if (lastP && lastS) n += data.split(lastP + m.code + lastS).length - 1;
+		}
+		// scan bare codes on the post-wrapped text (so wrapped aliases don't
+		// false-match as bare); pass to the modal in alwaysAsk mode
+		const decrypted = this.decrypt(data);
+		const bareHits = this.scanBareCodes(decrypted);
+		const bareCount = bareHits.length;
+		if (n === 0 && bareCount === 0) return;
+
+		const mode = this.settings.pasteUnmaskMode;
+		if (mode === 'neverRestore') {
+			// never intercept: leave the default paste alone. The user can still
+			// run "Convert aliases to real names" on the selection later.
+			return;
+		}
+		if (mode === 'alwaysRestore') {
+			// auto-restore wrapped codes only; bare codes are never auto-restored
+			if (n === 0) return; // nothing to auto-restore
+			evt.preventDefault();
+			editor.replaceSelection(decrypted);
+			const t = (k: string): string => this.t(k);
+			if (bareCount > 0) {
+				new Notice(t('pasteRestoreAuto').replace('%d', String(n)).replace('%d', String(bareCount)));
+			} else {
+				new Notice(t('pasteUnmasked').replace('%d', String(n)));
+			}
+			return;
+		}
+		// alwaysAsk: intercept with the modal (bare codes are per-item checkable)
 		evt.preventDefault();
-		editor.replaceSelection(out);
-		new Notice(this.t('pasteUnmasked'));
+		new PasteRestoreModal(this.app, this, data, n, bareHits, editor).open();
+	}
+
+	// #16 (revised): map the caret to the same visual spot after a whole-note
+	// rewrite. A plain character-offset restore breaks when the transformed text
+	// changes length BEFORE the caret — the caret then lands on different content
+	// or even a different line. Because encrypt/decrypt never cross newlines, we
+	// keep the caret on the SAME line and recompute its column from the exact
+	// length change of the replacement(s) that occur before it on that line.
+	mapCursorByTransform(
+		sourceText: string,
+		transform: (s: string) => string,
+		cur: { line: number; ch: number }
+	): { line: number; ch: number } {
+		const srcLines = sourceText.split('\n');
+		const line = Math.min(cur.line, srcLines.length - 1);
+		if (line < 0) return { line: 0, ch: 0 };
+		const prefix = srcLines[line].slice(0, cur.ch);
+		return { line, ch: transform(prefix).length };
+	}
+
+	clampCursor(p: { line: number; ch: number }, newText: string): { line: number; ch: number } {
+		const lines = newText.split('\n');
+		const line = Math.min(p.line, lines.length - 1);
+		const ch = Math.min(p.ch, lines[line]?.length ?? 0);
+		return { line, ch };
 	}
 
 	runEncrypt(editor: Editor): void {
@@ -3102,7 +3946,14 @@ export default class AIAliasPlugin extends Plugin {
 		if (sel && sel.length > 0) {
 			editor.replaceSelection(this.encrypt(sel));
 		} else {
-			editor.setValue(this.encrypt(editor.getValue()));
+			// whole-note: keep the caret on the same line and at the same visual
+			// column after the rewrite (#16, revised). Plain offset restore would
+			// jump when text before the caret changes length.
+			const cur = editor.getCursor();
+			const oldText = editor.getValue();
+			const text = this.encrypt(oldText);
+			editor.setValue(text);
+			editor.setCursor(this.clampCursor(this.mapCursorByTransform(oldText, (s) => this.encrypt(s), cur), text));
 		}
 		new Notice(this.t('encrypted'));
 	}
@@ -3122,7 +3973,12 @@ export default class AIAliasPlugin extends Plugin {
 		if (hits.length === 0 && titleHits.length === 0) {
 			// nothing unwrapped — write back directly, no interruption
 			if (isSelection) editor.replaceSelection(decrypted);
-			else editor.setValue(decrypted);
+			else {
+				const cur = editor.getCursor();
+				const oldText = text; // whole-note path: text === editor.getValue()
+				editor.setValue(decrypted);
+				editor.setCursor(this.clampCursor(this.mapCursorByTransform(oldText, (s) => this.decrypt(s), cur), decrypted));
+			}
 			new Notice(this.t('decrypted'));
 			return;
 		}
@@ -3141,10 +3997,50 @@ export default class AIAliasPlugin extends Plugin {
 
 	decrypt(text: string): string {
 		let out = text;
+		const lastP = this.settings.lastPrefix;
+		const lastS = this.settings.lastSuffix;
 		for (const m of this.settings.mappings) {
 			out = out.split(this.wrap(m.code)).join(m.real);
+			// fallback: also unwrap with the previous wrapper (set when the wrapper was changed)
+			if (lastP && lastS) {
+				out = out.split(lastP + m.code + lastS).join(m.real);
+			}
 		}
 		return out;
+	}
+
+	// Migrate the old wrapper to the new wrapper across the vault.
+	// Replaces per known alias code only (oldP + CODE + oldS -> newP + CODE + newS),
+	// so ordinary [[wikilinks]] that are not aliases are never touched.
+	async migrateWrapper(oldP: string, oldS: string, newP: string, newS: string): Promise<void> {
+		if (this.settings.mappings.length === 0) return;
+		const files = this.app.vault.getMarkdownFiles().filter((f) => this.isBatchTarget(f));
+		let total = 0;
+		const notice = new Notice(this.t('wrapMigrating').replace('%n', '0'), 0);
+		try {
+			for (let i = 0; i < files.length; i++) {
+				const content = await this.app.vault.cachedRead(files[i]);
+				let out = content;
+				for (const m of this.settings.mappings) {
+					const from = oldP + m.code + oldS;
+					const cnt = content.split(from).length - 1;
+					if (cnt > 0) {
+						out = out.split(from).join(newP + m.code + newS);
+						total += cnt;
+					}
+				}
+				if (out !== content) {
+					await this.app.vault.process(files[i], () => out);
+				}
+				if ((i + 1) % BATCH_YIELD === 0) {
+					notice.setMessage(this.t('wrapMigrating').replace('%n', String(total)));
+					await yieldToUi();
+				}
+			}
+		} finally {
+			notice.hide();
+		}
+		new Notice(this.t('wrapMigrated').replace('%n', String(total)));
 	}
 
 	private buildBareRegex(code: string): RegExp {
@@ -3203,7 +4099,19 @@ export default class AIAliasPlugin extends Plugin {
 		if (this.settings.batchBareCodePolicy !== 'skip' && this.settings.batchBareCodePolicy !== 'restoreAll') {
 			this.settings.batchBareCodePolicy = 'confirmAll';
 		}
-		this.settings.pasteUnmask = this.settings.pasteUnmask === true;
+		// v1.10.x: migrate legacy pasteUnmask boolean → pasteUnmaskMode
+		const legacy = (this.settings as unknown as { pasteUnmask?: unknown }).pasteUnmask;
+		if (typeof legacy === 'boolean') {
+			this.settings.pasteUnmaskMode = legacy ? 'alwaysRestore' : 'neverRestore';
+			delete (this.settings as unknown as { pasteUnmask?: boolean }).pasteUnmask;
+		}
+		if (
+			this.settings.pasteUnmaskMode !== 'alwaysAsk' &&
+			this.settings.pasteUnmaskMode !== 'alwaysRestore' &&
+			this.settings.pasteUnmaskMode !== 'neverRestore'
+		) {
+			this.settings.pasteUnmaskMode = 'alwaysAsk';
+		}
 		const keep = Number(this.settings.batchBackupKeep);
 		this.settings.batchBackupKeep = Number.isFinite(keep) ? Math.min(20, Math.max(1, Math.floor(keep))) : 5;
 
@@ -3230,4 +4138,48 @@ interface BareHit {
 	end: number;
 	code: string;
 	real: string;
+}
+
+// v1.10.x: multi-step undo picker — lists every rollable batch snapshot so the
+// user can roll back to ANY historical run, not just the most recent one (#19).
+class UndoBatchModal extends Modal {
+	plugin: AIAliasPlugin;
+	items: { path: string; snap: Snapshot }[];
+
+	constructor(app: App, plugin: AIAliasPlugin, items: { path: string; snap: Snapshot }[]) {
+		super(app);
+		this.plugin = plugin;
+		this.items = items;
+	}
+
+	onOpen(): void {
+		const { contentEl } = this;
+		const t = (k: string): string => this.plugin.t(k);
+		this.titleEl.setText(t('undoPickTitle'));
+		contentEl.createEl('p', { cls: 'ai-sub', text: t('undoPickDesc') });
+		const list = contentEl.createEl('div', { cls: 'ai-undolist' });
+		this.items.forEach((it) => {
+			const dir = this.plugin.t(it.snap.direction === 'encrypt' ? 'undoDirEnc' : 'undoDirDec');
+			const row = list.createEl('div', { cls: 'ai-undorow' });
+			const main = row.createEl('div', { cls: 'ai-undomain' });
+			main.createEl('span', { text: dir, cls: 'ai-undodir' });
+			main.createEl('span', { text: ' · ' + prettyStamp(it.snap.ts), cls: 'ai-undostamp' });
+			row.createEl('div', {
+				cls: 'ai-undocount',
+				text: t('undoPickRow').replace('%n', String(it.snap.entries.length))
+			});
+			row.addEventListener('click', () => {
+				this.close();
+				const msg = this.plugin
+					.t('undoConfirm')
+					.replace('%d', dir)
+					.replace('%t', prettyStamp(it.snap.ts))
+					.replace('%n', String(it.snap.entries.length));
+				new ConfirmDialog(this.app, msg, this.plugin.t('undoRun'), this.plugin.t('cancel'), () => {
+					void this.plugin.applyUndo(it.path, it.snap);
+				}).open();
+			});
+		});
+		contentEl.createEl('div', { cls: 'ai-foot' }).createEl('button', { text: this.plugin.t('cancel') }).addEventListener('click', () => this.close());
+	}
 }
